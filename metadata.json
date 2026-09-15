@@ -1,0 +1,6 @@
+{
+  "name": "EV STATIONS",
+  "description": "EV charging station locator in Singapore showing nearest locations, charging speeds, estimated charge times from 20%, and real-time available points.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
