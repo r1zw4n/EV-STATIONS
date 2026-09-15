@@ -23,3 +23,28 @@ export interface ChargingStation {
   chargeTimeLabel: string;
   points: ChargingPoint[];
 }
+
+export interface LiveStation {
+  id: number | string;
+  title: string;
+  addressLine: string;
+  town: string;
+  latitude: number | null;
+  longitude: number | null;
+  distance: number | null;
+  highestPowerKW: number | null;
+  numberOfPoints: number | null;
+  dataProviderTitle: string | null;
+  dataProviderLicense: string | null;
+}
+
+export interface LiveStationsApiResponse {
+  stations?: LiveStation[];
+  dataProviderTitle?: string | null;
+  dataProviderLicense?: string | null;
+  error?: string;
+  variable?: string;
+  refused?: boolean;
+  unreachable?: boolean;
+  upstreamStatus?: number | null;
+}
