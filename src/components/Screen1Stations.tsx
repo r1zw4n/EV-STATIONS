@@ -345,9 +345,17 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
             const chargeCalc = calculateChargeTime(station.highestPowerKW, batteryPct);
             const isTopMatch = index === 0;
 
-            const addressText = [station.addressLine, station.town]
-              .filter(Boolean)
-              .join(', ') || 'Singapore';
+            const isTitleSameAsAddress = Boolean(
+              station.title &&
+                station.addressLine &&
+                station.title.trim().toLowerCase() === station.addressLine.trim().toLowerCase()
+            );
+
+            const addressParts = isTitleSameAsAddress
+              ? [station.town]
+              : [station.addressLine, station.addressLine !== station.town ? station.town : null];
+
+            const addressText = addressParts.filter(Boolean).join(', ') || 'Singapore';
 
             return (
               <article
@@ -425,7 +433,8 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                   <div className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5 text-emerald-400" />
                     <span>
-                      <strong className="text-white">{station.numberOfPoints ?? 1}</strong> points registered
+                      <strong className="text-white">{station.numberOfPoints ?? 1}</strong>{' '}
+                      {(station.numberOfPoints ?? 1) === 1 ? 'point registered' : 'points registered'}
                     </span>
                   </div>
 

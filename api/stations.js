@@ -108,11 +108,42 @@ export default async function handler(req, res) {
       const distance =
         typeof rawDistance === 'number' ? Math.round(rawDistance * 10) / 10 : null;
 
+      // 1) If AddressInfo.Title is 40 characters or fewer and does not contain " at ", keep it as is (e.g. "BCA Academy").
+      // 2) Otherwise, if it contains " at " (case-insensitive), use only the text after the last " at ", trimmed.
+      // 3) If there is still no title, or it is longer than 40 characters, use AddressInfo.AddressLine1 instead.
+      // 4) If the final title is identical to AddressLine1, show AddressInfo.Town on the address line under it instead of repeating the same text twice.
+      const rawTitle = (item.AddressInfo?.Title || '').trim();
+      const addressLine1 = (item.AddressInfo?.AddressLine1 || '').trim();
+      const town = (item.AddressInfo?.Town || '').trim();
+
+      let title = '';
+      const lowerRawTitle = rawTitle.toLowerCase();
+      const lastAtIndex = lowerRawTitle.lastIndexOf(' at ');
+
+      if (rawTitle.length > 0 && rawTitle.length <= 40 && lastAtIndex === -1) {
+        title = rawTitle;
+      } else if (lastAtIndex !== -1) {
+        title = rawTitle.substring(lastAtIndex + 4).trim();
+      }
+
+      if (!title || title.length > 40) {
+        title = addressLine1 || 'EV Charging Station';
+      }
+
+      let addressLine = addressLine1;
+      if (
+        title &&
+        addressLine1 &&
+        title.trim().toLowerCase() === addressLine1.trim().toLowerCase()
+      ) {
+        addressLine = town || addressLine1;
+      }
+
       return {
         id: item.ID,
-        title: item.AddressInfo?.Title || 'EV Charging Station',
-        addressLine: item.AddressInfo?.AddressLine1 || '',
-        town: item.AddressInfo?.Town || '',
+        title,
+        addressLine,
+        town,
         latitude: item.AddressInfo?.Latitude ?? null,
         longitude: item.AddressInfo?.Longitude ?? null,
         distance,
