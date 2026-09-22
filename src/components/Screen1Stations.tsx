@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Compass,
   Zap,
@@ -13,9 +13,13 @@ import {
 } from 'lucide-react';
 import { LiveStation, LiveStationsApiResponse } from '../types';
 
+const CITY_HALL_COORDS = { lat: 1.3521, lng: 103.8198 };
+const GEOLOCATION_TIMEOUT_MS = 6000;
+
 interface Screen1Props {
   onNavigateToScreen2: (stationId?: string, postcode?: string) => void;
   onDataProviderLoaded?: (providerTitle: string | null) => void;
+  onGpsStateChange?: (isGpsActive: boolean) => void;
 }
 
 type FetchState = 'loading' | 'empty' | 'refused' | 'unreachable' | 'success';
@@ -23,10 +27,16 @@ type FetchState = 'loading' | 'empty' | 'refused' | 'unreachable' | 'success';
 export const Screen1Stations: React.FC<Screen1Props> = ({
   onNavigateToScreen2,
   onDataProviderLoaded,
+  onGpsStateChange,
 }) => {
   const [stations, setStations] = useState<LiveStation[]>([]);
   const [fetchState, setFetchState] = useState<FetchState>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [isLocationDeniedOrTimedOut, setIsLocationDeniedOrTimedOut] = useState<boolean>(false);
+  const [currentCoords, setCurrentCoords] = useState(CITY_HALL_COORDS);
+
+  // Store whether a geolocation attempt is actively resolving
+  const locationResolutionRef = useRef<boolean>(false);
 
   // Calculate estimated finish charging time from 20% based on live PowerKW
   // Assumes a standard 60 kWh EV battery: 80% charge needed = 48 kWh
@@ -61,76 +71,164 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
     };
   };
 
-  const fetchLiveStations = useCallback(async () => {
-    setFetchState('loading');
-    setErrorMessage('');
+  const fetchLiveStations = useCallback(
+    async (lat: number, lng: number) => {
+      setFetchState('loading');
+      setErrorMessage('');
 
-    try {
-      // Calls our serverless function at /api/stations
-      const res = await fetch('/api/stations?lat=1.3521&lng=103.8198');
+      try {
+        // Calls our serverless function at /api/stations with lat and lng
+        const res = await fetch(`/api/stations?lat=${lat}&lng=${lng}`);
 
-      // Check HTTP status before reading body
-      if (res.status === 503 || res.status === 401 || res.status === 403) {
-        setFetchState('refused');
-        try {
-          const errData: LiveStationsApiResponse = await res.json();
-          if (errData.error) setErrorMessage(errData.error);
-        } catch {
-          // Keep generic refused sentence
+        // Check HTTP status before reading body
+        if (res.status === 503 || res.status === 401 || res.status === 403) {
+          setFetchState('refused');
+          try {
+            const errData: LiveStationsApiResponse = await res.json();
+            if (errData.error) setErrorMessage(errData.error);
+          } catch {
+            // Keep generic refused sentence
+          }
+          return;
         }
-        return;
-      }
 
-      if (!res.ok) {
-        setFetchState('refused');
-        try {
-          const errData: LiveStationsApiResponse = await res.json();
-          if (errData.error) setErrorMessage(errData.error);
-        } catch {
-          // Keep generic refused sentence
+        if (!res.ok) {
+          setFetchState('refused');
+          try {
+            const errData: LiveStationsApiResponse = await res.json();
+            if (errData.error) setErrorMessage(errData.error);
+          } catch {
+            // Keep generic refused sentence
+          }
+          return;
         }
-        return;
-      }
 
-      const data: LiveStationsApiResponse = await res.json();
+        const data: LiveStationsApiResponse = await res.json();
 
-      if (data.refused) {
-        setFetchState('refused');
-        if (data.error) setErrorMessage(data.error);
-        return;
-      }
+        if (data.refused) {
+          setFetchState('refused');
+          if (data.error) setErrorMessage(data.error);
+          return;
+        }
 
-      if (data.unreachable) {
+        if (data.unreachable) {
+          setFetchState('unreachable');
+          if (data.error) setErrorMessage(data.error);
+          return;
+        }
+
+        const stationList = Array.isArray(data.stations) ? data.stations : [];
+
+        if (stationList.length === 0) {
+          setFetchState('empty');
+          return;
+        }
+
+        setStations(stationList.slice(0, 3));
+        setFetchState('success');
+
+        if (onDataProviderLoaded) {
+          onDataProviderLoaded(data.dataProviderTitle || stationList[0]?.dataProviderTitle || null);
+        }
+      } catch {
+        // Network failure, fetch failed, or serverless endpoint not responding
         setFetchState('unreachable');
-        if (data.error) setErrorMessage(data.error);
-        return;
       }
+    },
+    [onDataProviderLoaded]
+  );
 
-      const stationList = Array.isArray(data.stations) ? data.stations : [];
+  const requestLocationAndFetch = useCallback(() => {
+    locationResolutionRef.current = true;
+    let resolved = false;
 
-      if (stationList.length === 0) {
-        setFetchState('empty');
-        return;
+    // Timer to enforce fallback within N seconds if browser prompt is pending or unresolved
+    const timerId = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        locationResolutionRef.current = false;
+        setIsLocationDeniedOrTimedOut(true);
+        setCurrentCoords(CITY_HALL_COORDS);
+        if (onGpsStateChange) onGpsStateChange(false);
+        fetchLiveStations(CITY_HALL_COORDS.lat, CITY_HALL_COORDS.lng);
       }
+    }, GEOLOCATION_TIMEOUT_MS);
 
-      setStations(stationList.slice(0, 3));
-      setFetchState('success');
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(timerId);
+          locationResolutionRef.current = false;
 
-      if (onDataProviderLoaded) {
-        onDataProviderLoaded(data.dataProviderTitle || stationList[0]?.dataProviderTitle || null);
-      }
-    } catch {
-      // Network failure, fetch failed, or serverless endpoint not responding
-      setFetchState('unreachable');
+          const realLat = position.coords.latitude;
+          const realLng = position.coords.longitude;
+
+          setIsLocationDeniedOrTimedOut(false);
+          setCurrentCoords({ lat: realLat, lng: realLng });
+          if (onGpsStateChange) onGpsStateChange(true);
+
+          fetchLiveStations(realLat, realLng);
+        },
+        (error) => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(timerId);
+          locationResolutionRef.current = false;
+
+          console.warn('Geolocation access denied or unavailable:', error?.message);
+          setIsLocationDeniedOrTimedOut(true);
+          setCurrentCoords(CITY_HALL_COORDS);
+          if (onGpsStateChange) onGpsStateChange(false);
+
+          fetchLiveStations(CITY_HALL_COORDS.lat, CITY_HALL_COORDS.lng);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: GEOLOCATION_TIMEOUT_MS,
+          maximumAge: 60000,
+        }
+      );
+    } else {
+      resolved = true;
+      clearTimeout(timerId);
+      locationResolutionRef.current = false;
+      setIsLocationDeniedOrTimedOut(true);
+      setCurrentCoords(CITY_HALL_COORDS);
+      if (onGpsStateChange) onGpsStateChange(false);
+      fetchLiveStations(CITY_HALL_COORDS.lat, CITY_HALL_COORDS.lng);
     }
-  }, [onDataProviderLoaded]);
+  }, [fetchLiveStations, onGpsStateChange]);
 
   useEffect(() => {
-    fetchLiveStations();
-  }, [fetchLiveStations]);
+    requestLocationAndFetch();
+  }, [requestLocationAndFetch]);
 
   return (
     <section className="w-full pb-10" aria-label="Nearest Charging Stations">
+      {/* Geolocation fallback banner if denied or timed out */}
+      {isLocationDeniedOrTimedOut && (
+        <div
+          id="location-fallback-banner"
+          className="mb-4 bg-zinc-900/90 border border-amber-500/40 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-sm"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+            <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>[Allow Location Access (Default:CityHall)]</span>
+          </div>
+          <button
+            type="button"
+            id="btn-retry-location"
+            onClick={requestLocationAndFetch}
+            className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shrink-0 min-h-[44px] sm:min-h-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Try again</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. Case: The data is loading */}
       {fetchState === 'loading' && (
         <div
@@ -144,7 +242,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
             Retrieving the nearest EV charging stations from Open Charge Map...
           </p>
           <p className="text-xs text-zinc-400 mt-2">
-            Targeting Singapore region coordinates (1.3521, 103.8198)
+            Targeting Singapore region coordinates ({currentCoords.lat.toFixed(4)}, {currentCoords.lng.toFixed(4)})
           </p>
         </div>
       )}
@@ -163,7 +261,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
           </p>
           <button
             type="button"
-            onClick={fetchLiveStations}
+            onClick={() => fetchLiveStations(currentCoords.lat, currentCoords.lng)}
             className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -192,7 +290,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
           <div className="mt-4">
             <button
               type="button"
-              onClick={fetchLiveStations}
+              onClick={() => fetchLiveStations(currentCoords.lat, currentCoords.lng)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-bold text-amber-300 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -217,7 +315,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
           <div className="mt-4">
             <button
               type="button"
-              onClick={fetchLiveStations}
+              onClick={() => fetchLiveStations(currentCoords.lat, currentCoords.lng)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-xs font-bold text-red-300 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />

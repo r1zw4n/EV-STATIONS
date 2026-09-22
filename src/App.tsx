@@ -8,6 +8,7 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>('screen1');
   const [selectedPostalCode, setSelectedPostalCode] = useState<string | undefined>(undefined);
   const [dataProviderTitle, setDataProviderTitle] = useState<string | null>(null);
+  const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
 
   const handleNavigateToScreen2 = (_stationId?: string, postcode?: string) => {
     if (postcode) {
@@ -28,6 +29,7 @@ export default function App() {
         {/* Top Header & Navigation */}
         <Header
           activeScreen={activeScreen}
+          isGpsActive={isGpsActive}
           onSelectScreen={(screen) => {
             setActiveScreen(screen);
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -40,6 +42,7 @@ export default function App() {
             <Screen1Stations
               onNavigateToScreen2={handleNavigateToScreen2}
               onDataProviderLoaded={setDataProviderTitle}
+              onGpsStateChange={setIsGpsActive}
             />
           ) : (
             <Screen2Availability

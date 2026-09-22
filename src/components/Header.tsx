@@ -8,9 +8,10 @@ const USER_CURRENT_LOCATION_LABEL = 'Current Location: Bras Basah / City Hall, S
 interface HeaderProps {
   activeScreen: ScreenId;
   onSelectScreen: (screen: ScreenId) => void;
+  isGpsActive?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeScreen, onSelectScreen }) => {
+export const Header: React.FC<HeaderProps> = ({ activeScreen, onSelectScreen, isGpsActive = false }) => {
   return (
     <header className="w-full bg-zinc-950 border-b border-zinc-800 sticky top-0 z-30 shadow-lg">
       <div className="max-w-xl mx-auto px-4 pt-4 pb-3">
@@ -57,9 +58,17 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, onSelectScreen }) 
 
         {/* Location banner */}
         <div className="text-xs text-zinc-400 bg-zinc-900/90 rounded-lg px-3 py-1.5 mb-3 border border-zinc-800/80 flex items-center justify-between">
-          <span className="truncate">{USER_CURRENT_LOCATION_LABEL}</span>
-          <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded shrink-0 ml-2">
-            GPS Active
+          <span className="truncate font-medium text-zinc-200">
+            {isGpsActive ? '[Near you]' : '[City Hall (default)]'}
+          </span>
+          <span
+            className={`text-[11px] font-semibold px-2 py-0.5 rounded shrink-0 ml-2 border ${
+              isGpsActive
+                ? 'text-emerald-400 bg-emerald-950/60 border-emerald-800/50'
+                : 'text-zinc-400 bg-zinc-800 border-zinc-700'
+            }`}
+          >
+            {isGpsActive ? 'GPS Active' : 'Default GPS'}
           </span>
         </div>
 
