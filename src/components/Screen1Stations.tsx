@@ -9,7 +9,6 @@ import {
   AlertCircle,
   RefreshCw,
   Info,
-  Layers,
 } from 'lucide-react';
 import { LiveStation, LiveStationsApiResponse } from '../types';
 
@@ -396,7 +395,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                 </div>
 
                 {/* Primary EV Metrics Grid with LIVE PowerKW & calculated charge time */}
-                <div className="grid grid-cols-2 gap-2.5 my-3.5">
+                <div className="grid grid-cols-2 gap-2.5 mt-3.5">
                   {/* Distance & Live PowerKW Box */}
                   <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3">
                     <div className="text-[11px] font-semibold uppercase text-zinc-400 mb-1 flex items-center gap-1">
@@ -432,15 +431,6 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                       {chargeCalc.isEstimated ? 'est. based on 22 kW' : 'est. to 100% full'}
                     </div>
                   </div>
-                </div>
-
-                {/* Registration Info */}
-                <div className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>
-                    <strong className="text-white">{station.numberOfPoints ?? 1}</strong>{' '}
-                    {(station.numberOfPoints ?? 1) === 1 ? 'point registered' : 'points registered'}
-                  </span>
                 </div>
               </article>
             );

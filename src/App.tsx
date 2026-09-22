@@ -96,14 +96,15 @@ export default function App() {
           </div>
 
           {/* Attribution */}
-          <div className="pt-1.5 border-t border-zinc-800/60 text-center">
+          <div className="pt-1.5 border-t border-zinc-800/60 text-center space-y-0.5">
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
-              <span>Location Data — © Open Charge Map Contributors</span>
-              <span className="text-zinc-600 mx-1.5">•</span>
-              <span>Place names © OpenStreetMap contributors</span>
+              • Live-Availability Data — LTA DataMall (SG Open Data Licence)
             </p>
-            <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight mt-0.5">
-              Live-Availability Data — LTA DataMall (SG Open Data Licence)
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
+              • Location Data — © Open Charge Map Contributors
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
+              • Place Names — © OpenStreetMap contributors
             </p>
           </div>
         </div>
