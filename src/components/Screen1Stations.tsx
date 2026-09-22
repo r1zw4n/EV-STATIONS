@@ -32,6 +32,8 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
 }) => {
   const [stations, setStations] = useState<LiveStation[]>([]);
   const [emptyReason, setEmptyReason] = useState<string | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
+  const [searchRadiusKm, setSearchRadiusKm] = useState<number | null>(null);
   const [fetchState, setFetchState] = useState<FetchState>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLocationDeniedOrTimedOut, setIsLocationDeniedOrTimedOut] = useState<boolean>(false);
@@ -131,6 +133,8 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
         }
 
         const stationList = Array.isArray(data.stations) ? data.stations : [];
+        setReason(data.reason || null);
+        setSearchRadiusKm(typeof data.searchRadiusKm === 'number' ? data.searchRadiusKm : null);
 
         if (stationList.length === 0) {
           setFetchState('empty');
@@ -345,6 +349,11 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
       {/* Live 3 Station Cards */}
       {fetchState === 'success' && (
         <div className="space-y-4">
+          {(searchRadiusKm === 20 || searchRadiusKm === 35) && (
+            <p className="text-xs text-zinc-400 font-medium px-1">
+              Widened search to {searchRadiusKm} km to find 3 confirmed chargers.
+            </p>
+          )}
           {stations.map((station, index) => {
             const chargeCalc = calculateChargeTime(station.highestPowerKW, batteryPct);
             const isTopMatch = index === 0;
@@ -447,6 +456,11 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
               </article>
             );
           })}
+          {reason === 'fewer-than-3' && (
+            <p className="text-xs text-zinc-400 text-center py-2.5 px-3 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+              Only {stations.length} LTA-registered charger{stations.length === 1 ? '' : 's'} listed on Open Charge Map within 35 km.
+            </p>
+          )}
         </div>
       )}
     </section>

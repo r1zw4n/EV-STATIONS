@@ -41,6 +41,7 @@ export interface LiveStation {
   liveAvailable?: number;
   liveTotal?: number;
   ltaFiltered?: boolean;
+  searchRadiusKm?: number;
 }
 
 export interface LiveStationsApiResponse {
@@ -54,6 +55,7 @@ export interface LiveStationsApiResponse {
   upstreamStatus?: number | null;
   reason?: string;
   ltaFiltered?: boolean;
+  searchRadiusKm?: number;
 }
 
 export interface LtaConnector {

@@ -46,14 +46,20 @@ export default async function handler(req, res) {
     // Keep fallback coordinates
   }
 
-  const upstreamUrl = `https://api.openchargemap.io/v3/poi/?output=json&countrycode=SG&latitude=${encodeURIComponent(
-    lat
-  )}&longitude=${encodeURIComponent(
-    lng
-  )}&distance=10&distanceunit=KM&maxresults=20&compact=false&verbose=false`;
+  const ROUNDS = [
+    { distance: 10, maxresults: 20 },
+    { distance: 20, maxresults: 40 },
+    { distance: 35, maxresults: 60 },
+  ];
 
-  // 3. Call upstream with X-API-Key in header, never in URL
-  try {
+  // Helper to fetch from OCM
+  const fetchOcm = async (dist, maxres) => {
+    const upstreamUrl = `https://api.openchargemap.io/v3/poi/?output=json&countrycode=SG&latitude=${encodeURIComponent(
+      lat
+    )}&longitude=${encodeURIComponent(
+      lng
+    )}&distance=${dist}&distanceunit=KM&maxresults=${maxres}&compact=false&verbose=false`;
+
     const upstreamResponse = await fetch(upstreamUrl, {
       method: 'GET',
       headers: {
@@ -63,31 +69,24 @@ export default async function handler(req, res) {
       },
     });
 
-    // AFTER the fetch: check response.ok before reading body
     if (!upstreamResponse.ok) {
-      return sendResponse(upstreamResponse.status, {
-        error: `Upstream Open Charge Map API refused request with status ${upstreamResponse.status}.`,
-        upstreamStatus: upstreamResponse.status,
-        refused: true,
-      });
+      const err = new Error(`OCM refused request with status ${upstreamResponse.status}`);
+      err.status = upstreamResponse.status;
+      err.refused = true;
+      throw err;
     }
 
     const rawData = await upstreamResponse.json();
+    return Array.isArray(rawData) ? rawData : [];
+  };
 
-    if (!Array.isArray(rawData)) {
-      return sendResponse(200, {
-        stations: [],
-        dataProviderTitle: null,
-        dataProviderLicense: null,
-      });
-    }
-
-    // Return ONLY the fields the screen needs
+  // Deduplication & merge helper
+  const processAndMerge = (rawData, currentMergedMap) => {
     let defaultProviderTitle = 'Open Charge Map Contributors';
     let defaultProviderLicense =
       'Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0)';
 
-    const mergedMap = new Map();
+    const mergedMap = currentMergedMap || new Map();
 
     for (const item of rawData) {
       const connections = Array.isArray(item.Connections) ? item.Connections : [];
@@ -110,10 +109,6 @@ export default async function handler(req, res) {
       const distance =
         typeof rawDistance === 'number' ? Math.round(rawDistance * 10) / 10 : null;
 
-      // 1) If AddressInfo.Title is 40 characters or fewer and does not contain " at ", keep it as is (e.g. "BCA Academy").
-      // 2) Otherwise, if it contains " at " (case-insensitive), use only the text after the last " at ", trimmed.
-      // 3) If there is still no title, or it is longer than 40 characters, use AddressInfo.AddressLine1 instead.
-      // 4) If the final title is identical to AddressLine1, show AddressInfo.Town on the address line under it instead of repeating the same text twice.
       const rawTitle = (item.AddressInfo?.Title || '').trim();
       const addressLine1 = (item.AddressInfo?.AddressLine1 || '').trim();
       const town = (item.AddressInfo?.Town || '').trim();
@@ -144,7 +139,6 @@ export default async function handler(req, res) {
       const numberOfPoints =
         item.NumberOfPoints ?? (connections.length > 0 ? connections.length : 1);
 
-      // Compare AddressInfo.AddressLine1 after trimming, lowercasing, and removing punctuation and repeated spaces
       const normalizedAddress = addressLine1
         .toLowerCase()
         .replace(/[^\w\s]/g, '')
@@ -167,6 +161,7 @@ export default async function handler(req, res) {
         dataProviderTitle: providerTitle,
         dataProviderLicense: providerLicense,
         mergedCount: 1,
+        mergeKey,
       };
 
       if (!mergedMap.has(mergeKey)) {
@@ -174,22 +169,18 @@ export default async function handler(req, res) {
       } else {
         const existing = mergedMap.get(mergeKey);
 
-        // Keep track of how many OCM entries this site came from
         existing.mergedCount = (existing.mergedCount || 1) + 1;
 
-        // Keep the shorter distance
         if (existing.distance === null) {
           existing.distance = currentStation.distance;
         } else if (currentStation.distance !== null && currentStation.distance < existing.distance) {
           existing.distance = currentStation.distance;
         }
 
-        // Take the LARGER numberOfPoints (never add them, they may be the same chargers)
         const existingPts = typeof existing.numberOfPoints === 'number' ? existing.numberOfPoints : 1;
         const currentPts = typeof currentStation.numberOfPoints === 'number' ? currentStation.numberOfPoints : 1;
         existing.numberOfPoints = Math.max(existingPts, currentPts);
 
-        // Take the HIGHER highestPowerKW and keep the title of the entry with the higher kW
         const existingKw = typeof existing.highestPowerKW === 'number' ? existing.highestPowerKW : -1;
         const currentKw = typeof currentStation.highestPowerKW === 'number' ? currentStation.highestPowerKW : -1;
 
@@ -210,7 +201,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // Sort by distance
     const distinctStations = Array.from(mergedMap.values());
     distinctStations.sort((a, b) => {
       const distA = typeof a.distance === 'number' ? a.distance : Infinity;
@@ -218,6 +208,10 @@ export default async function handler(req, res) {
       return distA - distB;
     });
 
+    return { distinctStations, defaultProviderTitle, defaultProviderLicense, mergedMap };
+  };
+
+  try {
     // Check if LTA_ACCOUNT_KEY is present
     const ltaKey = process.env.LTA_ACCOUNT_KEY;
     const isLtaKeyMissing =
@@ -226,120 +220,215 @@ export default async function handler(req, res) {
       ltaKey.trim() === '' ||
       ltaKey === 'undefined';
 
-    // If LTA_ACCOUNT_KEY is missing, skip the LTA check entirely and return unfiltered OCM list
+    // If LTA_ACCOUNT_KEY is missing, skip the LTA check entirely and return the nearest 3 from the first ring with ltaFiltered: false
     if (isLtaKeyMissing) {
+      const rawData = await fetchOcm(ROUNDS[0].distance, ROUNDS[0].maxresults);
+      const { distinctStations, defaultProviderTitle, defaultProviderLicense } = processAndMerge(rawData);
       const stations = distinctStations.slice(0, 3).map((st) => ({
         ...st,
         ltaFiltered: false,
+        searchRadiusKm: ROUNDS[0].distance,
       }));
 
       return sendResponse(200, {
         stations,
+        searchRadiusKm: ROUNDS[0].distance,
         ltaFiltered: false,
         dataProviderTitle: defaultProviderTitle,
         dataProviderLicense: defaultProviderLicense,
       });
     }
 
-    // Take the first 12 that have an AddressInfo.Postcode (drop any without one)
-    const candidates = distinctStations
-      .filter((s) => s.postcode && String(s.postcode).trim() !== '')
-      .slice(0, 12);
+    // LTA is configured. Run in rounds to guarantee exactly 3 LTA-confirmed stations.
+    let providerTitle = 'Open Charge Map Contributors';
+    let providerLicense = 'Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0)';
+    const mergedMap = new Map();
+    const confirmedStationsMap = new Map(); // key -> confirmed station object
+    const checkedStationKeys = new Set(); // keys of stations already evaluated against LTA
+    const ltaCache = new Map(); // postalCode -> { liveAvailable, liveTotal } | null
 
-    // Call LTA in parallel with Promise.all
-    const checkLtaAvailability = async (station) => {
-      try {
-        const code = String(station.postcode).trim();
-        const ltaUrl = `https://datamall2.mytransport.sg/ltaodataservice/EVChargingPoints?PostalCode=${encodeURIComponent(
-          code
-        )}`;
-        const ltaRes = await fetch(ltaUrl, {
-          method: 'GET',
-          headers: {
-            AccountKey: ltaKey.trim(),
-            Accept: 'application/json',
-          },
-        });
+    for (let roundIndex = 0; roundIndex < ROUNDS.length; roundIndex++) {
+      const round = ROUNDS[roundIndex];
+      const rawData = await fetchOcm(round.distance, round.maxresults);
+      const result = processAndMerge(rawData, mergedMap);
+      providerTitle = result.defaultProviderTitle;
+      providerLicense = result.defaultProviderLicense;
 
-        if (!ltaRes.ok) {
-          return null;
+      // In each round, merge duplicates and sort by distance as now,
+      // skip any station already checked against LTA in an earlier round,
+      // and check the rest against LTA in parallel.
+      const candidates = result.distinctStations.filter((st) => {
+        const hasPostcode = st.postcode && String(st.postcode).trim() !== '';
+        if (!hasPostcode) return false;
+        const key = st.mergeKey || String(st.id);
+        return !checkedStationKeys.has(key) && !confirmedStationsMap.has(key);
+      });
+
+      // Never check more than 25 postal codes in total across all rounds.
+      const stationsToCheck = [];
+      const newPostcodesToFetch = new Set();
+
+      for (const st of candidates) {
+        const code = String(st.postcode).trim();
+        if (ltaCache.has(code)) {
+          stationsToCheck.push(st);
+        } else if (ltaCache.size + newPostcodesToFetch.size < 25) {
+          newPostcodesToFetch.add(code);
+          stationsToCheck.push(st);
         }
+      }
 
-        const ltaData = await ltaRes.json();
+      // Fetch any new postal codes from LTA in parallel
+      if (newPostcodesToFetch.size > 0) {
+        await Promise.all(
+          Array.from(newPostcodesToFetch).map(async (code) => {
+            try {
+              const ltaUrl = `https://datamall2.mytransport.sg/ltaodataservice/EVChargingPoints?PostalCode=${encodeURIComponent(
+                code
+              )}`;
+              const ltaRes = await fetch(ltaUrl, {
+                method: 'GET',
+                headers: {
+                  AccountKey: ltaKey.trim(),
+                  Accept: 'application/json',
+                },
+              });
 
-        let evLocations = [];
-        if (Array.isArray(ltaData)) {
-          if (ltaData.length > 0 && ltaData[0]?.value?.evLocationsData) {
-            evLocations = ltaData[0].value.evLocationsData;
-          } else if (ltaData.length > 0 && ltaData[0]?.evLocationsData) {
-            evLocations = ltaData[0].evLocationsData;
-          }
-        } else if (ltaData && typeof ltaData === 'object') {
-          if (ltaData.value?.evLocationsData) {
-            evLocations = ltaData.value.evLocationsData;
-          } else if (ltaData.evLocationsData) {
-            evLocations = ltaData.evLocationsData;
-          }
-        }
+              if (!ltaRes.ok) {
+                ltaCache.set(code, null);
+                return;
+              }
 
-        if (!Array.isArray(evLocations) || evLocations.length === 0) {
-          return null;
-        }
+              const ltaData = await ltaRes.json();
 
-        let liveAvailable = 0;
-        let liveTotal = 0;
-
-        for (const loc of evLocations) {
-          const points = Array.isArray(loc.chargingPoints) ? loc.chargingPoints : [];
-          for (const pt of points) {
-            const plugTypes = Array.isArray(pt.plugTypes) ? pt.plugTypes : [];
-            for (const plug of plugTypes) {
-              const evIds = Array.isArray(plug.evIds) ? plug.evIds : [];
-              for (const ev of evIds) {
-                liveTotal += 1;
-                if (ev && ev.status === '1') {
-                  liveAvailable += 1;
+              let evLocations = [];
+              if (Array.isArray(ltaData)) {
+                if (ltaData.length > 0 && ltaData[0]?.value?.evLocationsData) {
+                  evLocations = ltaData[0].value.evLocationsData;
+                } else if (ltaData.length > 0 && ltaData[0]?.evLocationsData) {
+                  evLocations = ltaData[0].evLocationsData;
+                }
+              } else if (ltaData && typeof ltaData === 'object') {
+                if (ltaData.value?.evLocationsData) {
+                  evLocations = ltaData.value.evLocationsData;
+                } else if (ltaData.evLocationsData) {
+                  evLocations = ltaData.evLocationsData;
                 }
               }
+
+              if (!Array.isArray(evLocations) || evLocations.length === 0) {
+                ltaCache.set(code, null);
+                return;
+              }
+
+              let liveAvailable = 0;
+              let liveTotal = 0;
+
+              for (const loc of evLocations) {
+                const points = Array.isArray(loc.chargingPoints) ? loc.chargingPoints : [];
+                for (const pt of points) {
+                  const plugTypes = Array.isArray(pt.plugTypes) ? pt.plugTypes : [];
+                  for (const plug of plugTypes) {
+                    const evIds = Array.isArray(plug.evIds) ? plug.evIds : [];
+                    for (const ev of evIds) {
+                      liveTotal += 1;
+                      if (ev && ev.status === '1') {
+                        liveAvailable += 1;
+                      }
+                    }
+                  }
+                }
+              }
+
+              ltaCache.set(code, { liveAvailable, liveTotal });
+            } catch {
+              ltaCache.set(code, null);
             }
-          }
-        }
-
-        return {
-          ...station,
-          liveAvailable,
-          liveTotal,
-          ltaFiltered: true,
-        };
-      } catch {
-        return null;
+          })
+        );
       }
-    };
 
-    const ltaResults = await Promise.all(candidates.map((s) => checkLtaAvailability(s)));
-    const matchedStations = ltaResults.filter(Boolean);
+      // Check candidates and collect confirmed ones
+      for (const st of stationsToCheck) {
+        const key = st.mergeKey || String(st.id);
+        checkedStationKeys.add(key);
+        checkedStationKeys.add(String(st.id));
 
-    // Return the 3 nearest that remain
-    const stations = matchedStations.slice(0, 3);
+        const code = String(st.postcode).trim();
+        const ltaInfo = ltaCache.get(code);
 
-    // If none remain, return stations: [] with reason: "no-lta-match"
-    if (stations.length === 0) {
+        if (ltaInfo && typeof ltaInfo.liveTotal === 'number' && ltaInfo.liveTotal >= 0) {
+          confirmedStationsMap.set(key, {
+            ...st,
+            liveAvailable: ltaInfo.liveAvailable,
+            liveTotal: ltaInfo.liveTotal,
+            ltaFiltered: true,
+            searchRadiusKm: round.distance,
+          });
+        }
+      }
+
+      // Stop as soon as 3 confirmed stations are found and return those 3, nearest first
+      const currentConfirmed = Array.from(confirmedStationsMap.values());
+      if (currentConfirmed.length >= 3) {
+        currentConfirmed.sort((a, b) => {
+          const distA = typeof a.distance === 'number' ? a.distance : Infinity;
+          const distB = typeof b.distance === 'number' ? b.distance : Infinity;
+          return distA - distB;
+        });
+
+        const stations = currentConfirmed.slice(0, 3).map((st) => ({
+          ...st,
+          searchRadiusKm: round.distance,
+        }));
+
+        return sendResponse(200, {
+          stations,
+          searchRadiusKm: round.distance,
+          ltaFiltered: true,
+          dataProviderTitle: providerTitle,
+          dataProviderLicense: providerLicense,
+        });
+      }
+    }
+
+    // If all rounds finish with fewer than 3
+    const finalConfirmed = Array.from(confirmedStationsMap.values());
+    finalConfirmed.sort((a, b) => {
+      const distA = typeof a.distance === 'number' ? a.distance : Infinity;
+      const distB = typeof b.distance === 'number' ? b.distance : Infinity;
+      return distA - distB;
+    });
+
+    if (finalConfirmed.length === 0) {
+      // If none, return stations: [] with reason: "no-lta-match"
       return sendResponse(200, {
         stations: [],
         reason: 'no-lta-match',
+        searchRadiusKm: 35,
         ltaFiltered: true,
-        dataProviderTitle: defaultProviderTitle,
-        dataProviderLicense: defaultProviderLicense,
+        dataProviderTitle: providerTitle,
+        dataProviderLicense: providerLicense,
       });
     }
 
+    // Return what was found with reason: "fewer-than-3" and searchRadiusKm: 35
     return sendResponse(200, {
-      stations,
+      stations: finalConfirmed.map((st) => ({ ...st, searchRadiusKm: 35 })),
+      reason: 'fewer-than-3',
+      searchRadiusKm: 35,
       ltaFiltered: true,
-      dataProviderTitle: defaultProviderTitle,
-      dataProviderLicense: defaultProviderLicense,
+      dataProviderTitle: providerTitle,
+      dataProviderLicense: providerLicense,
     });
-  } catch {
+  } catch (err) {
+    if (err && err.refused && err.status) {
+      return sendResponse(err.status, {
+        error: `Upstream Open Charge Map API refused request with status ${err.status}.`,
+        upstreamStatus: err.status,
+        refused: true,
+      });
+    }
     return sendResponse(502, {
       error: 'Upstream Open Charge Map is unreachable.',
       unreachable: true,
