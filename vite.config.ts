@@ -27,6 +27,18 @@ export default defineConfig(() => {
                 return;
               }
             }
+            if (req.url?.startsWith('/api/availability')) {
+              try {
+                const { default: handler } = await import('./api/availability.js');
+                await handler(req, res);
+                return;
+              } catch (err) {
+                console.error('Dev middleware error on /api/availability:', err);
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'Internal error handling /api/availability' }));
+                return;
+              }
+            }
             if (req.url?.startsWith('/api/health')) {
               try {
                 const { default: handler } = await import('./api/health.js');

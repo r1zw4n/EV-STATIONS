@@ -14,7 +14,7 @@ import {
 import { LiveStation, LiveStationsApiResponse } from '../types';
 
 interface Screen1Props {
-  onNavigateToScreen2: (stationId?: string) => void;
+  onNavigateToScreen2: (stationId?: string, postcode?: string) => void;
   onDataProviderLoaded?: (providerTitle: string | null) => void;
 }
 
@@ -321,7 +321,10 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                   <button
                     type="button"
                     id={`btn-view-points-${station.id}`}
-                    onClick={() => onNavigateToScreen2(String(station.id))}
+                    onClick={() => {
+                      const postal = station.postcode || station.addressLine?.match(/\b(\d{6})\b/)?.[1] || undefined;
+                      onNavigateToScreen2(String(station.id), postal);
+                    }}
                     className="min-h-[44px] px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white border border-zinc-700 flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <span>Check Points</span>

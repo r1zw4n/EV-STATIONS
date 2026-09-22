@@ -3,15 +3,16 @@ import { Header } from './components/Header';
 import { Screen1Stations } from './components/Screen1Stations';
 import { Screen2Availability } from './components/Screen2Availability';
 import { ScreenId } from './types';
-import { INVENTED_CHARGING_STATIONS } from './chargingData';
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>('screen1');
-  const [selectedStationId, setSelectedStationId] = useState<string | undefined>(undefined);
+  const [selectedPostalCode, setSelectedPostalCode] = useState<string | undefined>(undefined);
   const [dataProviderTitle, setDataProviderTitle] = useState<string | null>(null);
 
-  const handleNavigateToScreen2 = (stationId?: string) => {
-    setSelectedStationId(stationId);
+  const handleNavigateToScreen2 = (_stationId?: string, postcode?: string) => {
+    if (postcode) {
+      setSelectedPostalCode(postcode);
+    }
     setActiveScreen('screen2');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -42,15 +43,14 @@ export default function App() {
             />
           ) : (
             <Screen2Availability
-              stations={INVENTED_CHARGING_STATIONS}
-              initialSelectedStationId={selectedStationId}
+              initialPostalCode={selectedPostalCode}
               onNavigateToScreen1={handleNavigateToScreen1}
             />
           )}
         </main>
       </div>
 
-      {/* Bottom Sticky Bar with Open Charge Map License Attribution */}
+      {/* Bottom Sticky Bar with Open Charge Map and LTA DataMall License Attribution */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 bg-zinc-950/95 backdrop-blur border-t border-zinc-800/80 py-2.5 px-4">
         <div className="max-w-xl mx-auto space-y-1.5">
           {/* Quick status bar */}
@@ -66,10 +66,13 @@ export default function App() {
             </div>
           </div>
 
-          {/* Open Charge Map Attribution & DataProvider Title */}
+          {/* Attribution & DataProvider Title */}
           <div className="pt-1.5 border-t border-zinc-800/60 text-center">
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
               Charging location data from Open Charge Map — © Open Charge Map Contributors, licensed CC BY 4.0
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight mt-0.5">
+              Real-time availability from LTA DataMall — licensed under Singapore Open Data Licence
             </p>
             {dataProviderTitle && (
               <p className="text-[10px] text-zinc-400 mt-0.5">

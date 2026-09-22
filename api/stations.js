@@ -119,6 +119,7 @@ export default async function handler(req, res) {
         highestPowerKW,
         numberOfPoints:
           item.NumberOfPoints ?? (connections.length > 0 ? connections.length : 1),
+        postcode: item.AddressInfo?.Postcode || null,
         dataProviderTitle: providerTitle,
         dataProviderLicense: providerLicense,
       };

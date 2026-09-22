@@ -1,54 +1,124 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Zap,
   CheckCircle2,
   XCircle,
   MapPin,
   ChevronLeft,
-  ShieldCheck,
   Radio,
   Clock,
+  Search,
+  RefreshCw,
+  AlertCircle,
+  Info,
+  Building,
 } from 'lucide-react';
-import { ChargingStation } from '../types';
+import { LtaSiteGroup, LtaAvailabilityApiResponse } from '../types';
 
 interface Screen2Props {
-  stations: ChargingStation[];
-  initialSelectedStationId?: string;
+  initialPostalCode?: string;
   onNavigateToScreen1: () => void;
 }
 
+type FetchState = 'loading' | 'empty' | 'refused' | 'unreachable' | 'success';
+
 export const Screen2Availability: React.FC<Screen2Props> = ({
-  stations,
-  initialSelectedStationId,
+  initialPostalCode,
   onNavigateToScreen1,
 }) => {
-  // Sort by nearest distance to identify the two nearby locations
-  const nearestStations = [...stations].sort((a, b) => a.distanceKm - b.distanceKm);
-  const twoNearbyLocations = nearestStations.slice(0, 2);
+  const [postalInput, setPostalInput] = useState<string>(initialPostalCode || '038983');
+  const [activePostal, setActivePostal] = useState<string>(initialPostalCode || '038983');
+  const [fetchState, setFetchState] = useState<FetchState>('loading');
+  const [groups, setGroups] = useState<LtaSiteGroup[]>([]);
+  const [totalAvailable, setTotalAvailable] = useState<number>(0);
+  const [totalConnectors, setTotalConnectors] = useState<number>(0);
+  const [lastFetchedTime, setLastFetchedTime] = useState<string>('');
+  const [activeSiteFilter, setActiveSiteFilter] = useState<string>('all');
 
-  // Selected station filter (allows viewing both or focusing on one)
-  const [activeStationFilter, setActiveStationFilter] = useState<string>(
-    initialSelectedStationId && twoNearbyLocations.some((s) => s.id === initialSelectedStationId)
-      ? initialSelectedStationId
-      : 'all'
-  );
+  // When initialPostalCode changes from Screen 1 navigation, update and fetch
+  useEffect(() => {
+    if (initialPostalCode && initialPostalCode.trim() !== '') {
+      setPostalInput(initialPostalCode.trim());
+      setActivePostal(initialPostalCode.trim());
+    }
+  }, [initialPostalCode]);
 
-  // Filtered stations to show
-  const displayedStations =
-    activeStationFilter === 'all'
-      ? twoNearbyLocations
-      : twoNearbyLocations.filter((s) => s.id === activeStationFilter);
+  const fetchAvailability = useCallback(async (postalToFetch: string) => {
+    setFetchState('loading');
+    const cleanPostal = postalToFetch.trim() || '038983';
 
-  // Overall totals across the two nearby locations
-  const totalAvailableInNearby = twoNearbyLocations.reduce((acc, station) => {
-    return acc + station.points.filter((p) => p.isAvailable).length;
-  }, 0);
+    try {
+      const res = await fetch(`/api/availability?postal=${encodeURIComponent(cleanPostal)}`);
 
-  const totalPointsInNearby = twoNearbyLocations.reduce((acc, station) => {
-    return acc + station.points.length;
-  }, 0);
+      if (res.status === 503 || res.status === 401 || res.status === 403) {
+        setFetchState('refused');
+        return;
+      }
 
-  const totalInUseInNearby = totalPointsInNearby - totalAvailableInNearby;
+      if (!res.ok) {
+        setFetchState('refused');
+        return;
+      }
+
+      const data: LtaAvailabilityApiResponse = await res.json();
+
+      if (data.refused) {
+        setFetchState('refused');
+        return;
+      }
+
+      if (data.unreachable) {
+        setFetchState('unreachable');
+        return;
+      }
+
+      const siteGroups = Array.isArray(data.groups) ? data.groups : [];
+
+      // Format current local time for last fetched display
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      setLastFetchedTime(timeStr);
+
+      if (siteGroups.length === 0) {
+        setGroups([]);
+        setTotalAvailable(0);
+        setTotalConnectors(0);
+        setFetchState('empty');
+        return;
+      }
+
+      setGroups(siteGroups);
+      setTotalAvailable(data.totalAvailable ?? siteGroups.reduce((acc, g) => acc + g.availableConnectors, 0));
+      setTotalConnectors(data.totalConnectors ?? siteGroups.reduce((acc, g) => acc + g.totalConnectors, 0));
+      setActiveSiteFilter('all');
+      setFetchState('success');
+    } catch {
+      setFetchState('unreachable');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAvailability(activePostal);
+  }, [activePostal, fetchAvailability]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = postalInput.trim();
+    if (clean) {
+      setActivePostal(clean);
+    }
+  };
+
+  const displayedGroups =
+    activeSiteFilter === 'all'
+      ? groups
+      : groups.filter((g) => g.name === activeSiteFilter);
+
+  const totalInUse = Math.max(0, totalConnectors - totalAvailable);
 
   return (
     <section className="w-full pb-10" aria-labelledby="screen2-heading">
@@ -65,7 +135,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
         </button>
       </div>
 
-      {/* Screen Title */}
+      {/* Screen Title & Subtitle */}
       <div className="mb-4">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
@@ -73,210 +143,375 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
             Available Charging Points
           </h2>
         </div>
-        <p className="text-sm text-zinc-400 mt-0.5">
-          Real-time count of points not being used in your 2 nearby locations.
+        <p className="text-xs sm:text-sm text-zinc-400 mt-1 leading-relaxed">
+          Data from LTA DataMall, refreshed every 5 minutes
+          {lastFetchedTime ? ` • Last fetched: ${lastFetchedTime}` : ''}
         </p>
       </div>
 
-      {/* Hero Availability Stat Card - Ultra High Legibility at Arm's Length */}
-      <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-emerald-500/40 rounded-2xl p-5 mb-5 shadow-lg shadow-emerald-950/20">
-        <div className="text-xs uppercase font-bold tracking-wider text-zinc-400 flex items-center justify-between">
-          <span>Combined 2 Nearby Locations</span>
-          <span className="text-[11px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/50">
-            Unused & Ready
-          </span>
+      {/* Postal Code Search / Quick Selector */}
+      <form
+        onSubmit={handleSearchSubmit}
+        className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 sm:p-4 mb-4 shadow-sm"
+      >
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="relative flex-1">
+            <label htmlFor="postal-code-input" className="sr-only">
+              Singapore 6-digit Postal Code
+            </label>
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+              <Search className="w-4 h-4" />
+            </div>
+            <input
+              id="postal-code-input"
+              type="text"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={postalInput}
+              onChange={(e) => setPostalInput(e.target.value)}
+              placeholder="e.g. 038983"
+              className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-sm font-semibold text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors min-h-[44px]"
+            />
+          </div>
+          <button
+            type="submit"
+            id="search-postal-btn"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-black rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
+          >
+            <Search className="w-3.5 h-3.5 text-black" />
+            <span>Check Availability</span>
+          </button>
         </div>
+        <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-2 px-1">
+          <span>Current Location Code: <strong className="text-zinc-200">{activePostal}</strong></span>
+          <span className="text-zinc-400">Postal search</span>
+        </div>
+      </form>
 
-        <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-4xl sm:text-5xl font-black text-emerald-400 tracking-tight">
-            {totalAvailableInNearby}
-          </span>
-          <span className="text-xl font-bold text-zinc-300">
-            / {totalPointsInNearby} points free
-          </span>
-        </div>
+      {/* Four distinct state sentences */}
 
-        {/* Visual Slot Meter */}
-        <div className="mt-3.5 flex gap-1.5">
-          {Array.from({ length: totalPointsInNearby }).map((_, idx) => {
-            const isFreeSlot = idx < totalAvailableInNearby;
-            return (
-              <div
-                key={`meter-${idx}`}
-                className={`h-2.5 flex-1 rounded-full ${
-                  isFreeSlot ? 'bg-emerald-400 shadow-sm shadow-emerald-500/50' : 'bg-zinc-800'
-                }`}
-                title={isFreeSlot ? 'Available' : 'In Use'}
-              />
-            );
-          })}
+      {/* 1. Case: Loading */}
+      {fetchState === 'loading' && (
+        <div
+          id="status-loading-lta"
+          className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 text-center my-4 shadow-sm"
+        >
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <Zap className="w-6 h-6 animate-pulse" />
+          </div>
+          <p className="text-base font-semibold text-zinc-100 leading-relaxed max-w-md mx-auto">
+            Checking Availability Status
+          </p>
+          <p className="text-xs text-zinc-400 mt-2">
+            Querying LTA DataMall EV charging connector occupancy for postal code {activePostal}...
+          </p>
         </div>
+      )}
 
-        <div className="mt-3 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
-          <span className="flex items-center gap-1.5 text-emerald-300 font-medium">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            {totalAvailableInNearby} available now
-          </span>
-          <span className="flex items-center gap-1.5 text-zinc-400 font-medium">
-            <XCircle className="w-3.5 h-3.5 text-zinc-500" />
-            {totalInUseInNearby} currently charging
-          </span>
-        </div>
-      </div>
-
-      {/* Location Filter Pills */}
-      <div className="mb-4">
-        <div className="text-xs uppercase font-semibold text-zinc-400 mb-2 flex items-center gap-1.5">
-          <Radio className="w-3.5 h-3.5 text-emerald-400" />
-          Filter by Location:
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* 2. Case: Empty */}
+      {fetchState === 'empty' && (
+        <div
+          id="status-empty-lta"
+          className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 text-center my-4 shadow-sm"
+        >
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400">
+            <Info className="w-6 h-6" />
+          </div>
+          <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
+            No EV-Stations found - Try another Location!
+          </p>
+          <p className="text-xs text-zinc-400 mt-2">
+            No registered LTA charging points returned for postal code {activePostal}.
+          </p>
           <button
             type="button"
-            id="filter-loc-all"
-            onClick={() => setActiveStationFilter('all')}
-            className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
-              activeStationFilter === 'all'
-                ? 'bg-zinc-800 text-emerald-400 border border-emerald-500/50 shadow-sm'
-                : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
-            }`}
+            onClick={() => {
+              setPostalInput('038983');
+              setActivePostal('038983');
+            }}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer"
           >
-            Both Locations ({twoNearbyLocations.length})
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reset to Suntec City (038983)</span>
           </button>
-          {twoNearbyLocations.map((loc, idx) => (
-            <button
-              key={`filter-${loc.id}`}
-              type="button"
-              id={`filter-loc-${loc.id}`}
-              onClick={() => setActiveStationFilter(loc.id)}
-              className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
-                activeStationFilter === loc.id
-                  ? 'bg-zinc-800 text-emerald-400 border border-emerald-500/50 shadow-sm'
-                  : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
-              }`}
-            >
-              #{idx + 1} {loc.name.split(' ')[0]} ({loc.points.filter((p) => p.isAvailable).length} free)
-            </button>
-          ))}
         </div>
-      </div>
+      )}
 
-      {/* Detailed Bay Breakdowns for Nearby Locations */}
-      <div className="space-y-5">
-        {displayedStations.map((station, index) => {
-          const availableInStation = station.points.filter((p) => p.isAvailable).length;
-          const totalInStation = station.points.length;
-          const occupiedInStation = totalInStation - availableInStation;
-
-          return (
-            <div
-              key={station.id}
-              id={`availability-card-${station.id}`}
-              className="bg-zinc-900/90 rounded-2xl p-4 border border-zinc-800 shadow-sm"
+      {/* 3. Case: Refused */}
+      {fetchState === 'refused' && (
+        <div
+          id="status-refused-lta"
+          className="bg-zinc-900/90 border border-amber-500/40 rounded-2xl p-6 text-center my-4 shadow-sm"
+        >
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <p className="text-base font-semibold text-amber-200 leading-relaxed max-w-md mx-auto">
+            System Maintenance, Try again later.
+          </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => fetchAvailability(activePostal)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-bold text-amber-300 transition-colors cursor-pointer"
             >
-              {/* Header of Station */}
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-emerald-400 border border-zinc-700">
-                      Nearby #{index + 1}
-                    </span>
-                    <span className="text-xs text-zinc-400">{station.distanceKm} km away</span>
-                  </div>
-                  <h3 className="text-base font-bold text-white leading-snug">
-                    {station.name}
-                  </h3>
-                  <p className="text-xs text-zinc-400 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                    <span>{station.address}</span>
-                  </p>
-                </div>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry Request</span>
+            </button>
+          </div>
+        </div>
+      )}
 
-                {/* Big summary badge for this station */}
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-right shrink-0">
-                  <div className="text-[11px] font-semibold text-zinc-400 uppercase leading-none">
-                    Free Points
-                  </div>
-                  <div className="text-xl font-black text-emerald-400 leading-tight mt-0.5">
-                    {availableInStation}{' '}
-                    <span className="text-xs font-semibold text-zinc-400">/ {totalInStation}</span>
-                  </div>
-                </div>
-              </div>
+      {/* 4. Case: Unreachable */}
+      {fetchState === 'unreachable' && (
+        <div
+          id="status-unreachable-lta"
+          className="bg-zinc-900/90 border border-red-500/40 rounded-2xl p-6 text-center my-4 shadow-sm"
+        >
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <p className="text-base font-semibold text-red-200 leading-relaxed max-w-md mx-auto">
+            We couldn&apos;t reach LTA, availability is Unknown.
+          </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => fetchAvailability(activePostal)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-xs font-bold text-red-300 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry LTA Connection</span>
+            </button>
+          </div>
+        </div>
+      )}
 
-              {/* Station Speed & Battery 20% reminder */}
-              <div className="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-950/60 rounded-lg px-3 py-1.5 my-3 border border-zinc-800/60">
-                <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Max {station.maxSpeedKw} kW DC</span>
-                <span className="text-zinc-600">•</span>
-                <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>{station.chargeTimeMinutesFrom20} mins from 20% to full</span>
-              </div>
+      {/* Success State: Live Real-Time Availability from LTA DataMall */}
+      {fetchState === 'success' && (
+        <>
+          {/* Hero Availability Stat Card */}
+          <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-emerald-500/40 rounded-2xl p-5 mb-5 shadow-lg shadow-emerald-950/20">
+            <div className="text-xs uppercase font-bold tracking-wider text-zinc-400 flex items-center justify-between">
+              <span>Postal Code {activePostal} ({groups.length} site{groups.length !== 1 ? 's' : ''})</span>
+              <span className="text-[11px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/50">
+                LTA Real-Time
+              </span>
+            </div>
 
-              {/* Points Listing: Each Individual EV Charging Bay */}
-              <div className="mt-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                  Charging Point Bays & Status:
-                </div>
+            <div className="mt-3 flex items-baseline gap-2">
+              <span className="text-4xl sm:text-5xl font-black text-emerald-400 tracking-tight">
+                {totalAvailable}
+              </span>
+              <span className="text-xl font-bold text-zinc-300">
+                / {totalConnectors} connectors free
+              </span>
+            </div>
 
-                <div className="space-y-2">
-                  {station.points.map((point) => (
+            {/* Visual Slot Meter */}
+            {totalConnectors > 0 && (
+              <div className="mt-3.5 flex gap-1 flex-wrap">
+                {Array.from({ length: Math.min(totalConnectors, 40) }).map((_, idx) => {
+                  const isFreeSlot = idx < totalAvailable;
+                  return (
                     <div
-                      key={point.id}
-                      id={`point-row-${point.id}`}
-                      className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                        point.isAvailable
-                          ? 'bg-emerald-950/15 border-emerald-800/40 text-white'
-                          : 'bg-zinc-950/50 border-zinc-800/80 text-zinc-400'
+                      key={`meter-${idx}`}
+                      className={`h-2.5 flex-1 min-w-[6px] rounded-full ${
+                        isFreeSlot ? 'bg-emerald-400 shadow-sm shadow-emerald-500/50' : 'bg-zinc-800'
                       }`}
-                    >
-                      {/* Bay identifier and plug specs */}
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                            point.isAvailable
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                              : 'bg-zinc-800 text-zinc-500'
-                          }`}
-                        >
-                          <Zap className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-white flex items-center gap-2">
-                            <span>{point.bayLabel}</span>
-                          </div>
-                          <div className="text-xs text-zinc-400 flex items-center gap-2 mt-0.5">
-                            <span className="font-semibold text-zinc-300">
-                              {point.speedKw} kW
-                            </span>
-                            <span className="text-zinc-600">•</span>
-                            <span>{point.connectorType}</span>
-                          </div>
-                        </div>
-                      </div>
+                      title={isFreeSlot ? 'Available' : 'Occupied'}
+                    />
+                  );
+                })}
+              </div>
+            )}
 
-                      {/* Availability status badge */}
-                      <div>
-                        {point.isAvailable ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-600/50 px-2.5 py-1 rounded-full">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            AVAILABLE
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-full">
-                            <XCircle className="w-3.5 h-3.5 text-zinc-500" />
-                            IN USE
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div className="mt-3 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
+              <span className="flex items-center gap-1.5 text-emerald-300 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                {totalAvailable} available now (Status &quot;1&quot;)
+              </span>
+              <span className="flex items-center gap-1.5 text-zinc-400 font-medium">
+                <XCircle className="w-3.5 h-3.5 text-zinc-500" />
+                {totalInUse} occupied / in use
+              </span>
+            </div>
+          </div>
+
+          {/* Group Filter Tabs (if more than 1 site exists in this postal code) */}
+          {groups.length > 1 && (
+            <div className="mb-4">
+              <div className="text-xs uppercase font-semibold text-zinc-400 mb-2 flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-emerald-400" />
+                Filter by Site Location:
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  id="filter-site-all"
+                  onClick={() => setActiveSiteFilter('all')}
+                  className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
+                    activeSiteFilter === 'all'
+                      ? 'bg-zinc-800 text-emerald-400 border border-emerald-500/50 shadow-sm'
+                      : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
+                  }`}
+                >
+                  All Sites ({groups.length})
+                </button>
+                {groups.map((group, idx) => (
+                  <button
+                    key={`filter-${group.name}-${idx}`}
+                    type="button"
+                    id={`filter-site-${idx}`}
+                    onClick={() => setActiveSiteFilter(group.name)}
+                    className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer max-w-[200px] truncate ${
+                      activeSiteFilter === group.name
+                        ? 'bg-zinc-800 text-emerald-400 border border-emerald-500/50 shadow-sm'
+                        : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
+                    }`}
+                  >
+                    #{idx + 1} {group.name.split('(')[0].trim()} ({group.availableConnectors} free)
+                  </button>
+                ))}
               </div>
             </div>
-          );
-        })}
-      </div>
+          )}
+
+          {/* Grouped Sites Breakdown */}
+          <div className="space-y-5">
+            {displayedGroups.map((group, groupIdx) => (
+              <div
+                key={`site-group-${group.name}-${groupIdx}`}
+                id={`site-group-${groupIdx}`}
+                className="bg-zinc-900/90 rounded-2xl p-4 border border-zinc-800 shadow-sm"
+              >
+                {/* Header of Site Group */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-emerald-400 border border-zinc-700">
+                        Site #{groupIdx + 1}
+                      </span>
+                      <span className="text-xs text-zinc-400">{group.chargers.length} charger{group.chargers.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <h3 className="text-base font-bold text-white leading-snug">
+                      {group.name}
+                    </h3>
+                    <p className="text-xs text-zinc-400 flex items-center gap-1 mt-1">
+                      <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      <span>{group.address}</span>
+                    </p>
+                  </div>
+
+                  {/* Summary Badge for this group */}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-right shrink-0">
+                    <div className="text-[11px] font-semibold text-zinc-400 uppercase leading-none">
+                      Free Plugs
+                    </div>
+                    <div className="text-xl font-black text-emerald-400 leading-tight mt-0.5">
+                      {group.availableConnectors}{' '}
+                      <span className="text-xs font-semibold text-zinc-400">/ {group.totalConnectors}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Individual Chargers inside this Group */}
+                <div className="space-y-3 pt-2 border-t border-zinc-800/80">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Chargers & Bays:
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {group.chargers.map((charger, chargerIdx) => (
+                      <div
+                        key={`charger-${charger.position}-${chargerIdx}`}
+                        className="bg-zinc-950/70 border border-zinc-800/90 rounded-xl p-3"
+                      >
+                        {/* Charger Position and Operator */}
+                        <div className="flex items-center justify-between gap-2 text-xs mb-2">
+                          <div className="flex items-center gap-1.5 font-bold text-zinc-200">
+                            <Building className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Bay / Position: {charger.position || `Bay #${chargerIdx + 1}`}</span>
+                          </div>
+                          {charger.operator && (
+                            <span className="text-[11px] font-medium text-zinc-400 truncate max-w-[150px]">
+                              {charger.operator}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Plugs for this Charger */}
+                        <div className="space-y-2">
+                          {charger.plugs.map((plug, plugIdx) => (
+                            <div
+                              key={`plug-${plugIdx}`}
+                              className="bg-zinc-900/60 rounded-lg p-2.5 border border-zinc-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                                  <Zap className="w-3.5 h-3.5" />
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                    <span>{plug.plugType || 'EV Plug'}</span>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-zinc-800 text-zinc-300 rounded">
+                                      {plug.powerRating}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-zinc-400 flex items-center gap-2 mt-0.5">
+                                    <span className="text-zinc-300 font-semibold">{plug.chargingSpeed} kW</span>
+                                    {plug.price > 0 && (
+                                      <>
+                                        <span className="text-zinc-600">•</span>
+                                        <span className="text-zinc-300">${plug.price.toFixed(4)} / {plug.priceType}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Connectors status */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {plug.connectors.map((conn, connIdx) => {
+                                  const isAvail = conn.status === '1';
+                                  const isOcc = conn.status === '0';
+
+                                  return (
+                                    <div
+                                      key={`conn-${conn.evCpId || connIdx}`}
+                                      className="flex items-center gap-1"
+                                    >
+                                      {isAvail ? (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 bg-emerald-950/70 border border-emerald-600/50 px-2 py-0.5 rounded-full">
+                                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                          AVAILABLE
+                                        </span>
+                                      ) : isOcc ? (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full">
+                                          <XCircle className="w-3 h-3 text-zinc-500" />
+                                          OCCUPIED
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-500 bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded-full">
+                                          UNAVAILABLE
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 };

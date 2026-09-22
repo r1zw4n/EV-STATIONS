@@ -1,6 +1,6 @@
 {
   "name": "EV STATIONS",
-  "description": "EV charging station locator in Singapore showing nearest locations, charging speeds, estimated charge times from 20%, and real-time available points.",
+  "description": "EV charging station locator and availability checker in Singapore showing nearest stations from Open Charge Map and real-time charging point availability by postal code from LTA DataMall.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

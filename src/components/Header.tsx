@@ -1,7 +1,9 @@
 import React from 'react';
 import { BatteryCharging, Zap, MapPin, Gauge } from 'lucide-react';
 import { ScreenId } from '../types';
-import { USER_CURRENT_BATTERY_PCT, USER_CURRENT_LOCATION_LABEL } from '../chargingData';
+
+const USER_CURRENT_BATTERY_PCT = 20;
+const USER_CURRENT_LOCATION_LABEL = 'Current Location: Bras Basah / City Hall, Singapore';
 
 interface HeaderProps {
   activeScreen: ScreenId;

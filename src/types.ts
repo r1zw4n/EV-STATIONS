@@ -34,6 +34,7 @@ export interface LiveStation {
   distance: number | null;
   highestPowerKW: number | null;
   numberOfPoints: number | null;
+  postcode?: string | null;
   dataProviderTitle: string | null;
   dataProviderLicense: string | null;
 }
@@ -48,3 +49,47 @@ export interface LiveStationsApiResponse {
   unreachable?: boolean;
   upstreamStatus?: number | null;
 }
+
+export interface LtaConnector {
+  evCpId: string;
+  status: string; // "1" for available, "0" for occupied, ""/null for not available
+}
+
+export interface LtaPlug {
+  plugType: string;
+  powerRating: string;
+  chargingSpeed: number;
+  price: number;
+  priceType: string;
+  connectors: LtaConnector[];
+}
+
+export interface LtaCharger {
+  name: string;
+  address: string;
+  operator: string;
+  position: string;
+  plugs: LtaPlug[];
+}
+
+export interface LtaSiteGroup {
+  name: string;
+  address: string;
+  availableConnectors: number;
+  totalConnectors: number;
+  chargers: LtaCharger[];
+}
+
+export interface LtaAvailabilityApiResponse {
+  postalCode?: string;
+  totalAvailable?: number;
+  totalConnectors?: number;
+  groups?: LtaSiteGroup[];
+  fetchedAt?: string;
+  error?: string;
+  variable?: string;
+  refused?: boolean;
+  unreachable?: boolean;
+  upstreamStatus?: number | null;
+}
+
