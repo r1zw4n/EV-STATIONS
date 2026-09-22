@@ -37,6 +37,7 @@ export interface LiveStation {
   postcode?: string | null;
   dataProviderTitle: string | null;
   dataProviderLicense: string | null;
+  mergedCount?: number;
 }
 
 export interface LiveStationsApiResponse {

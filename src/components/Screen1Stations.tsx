@@ -361,6 +361,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
               <article
                 key={station.id}
                 id={`station-card-${station.id}`}
+                data-merged-count={station.mergedCount ?? 1}
                 className={`bg-zinc-900/90 rounded-2xl p-4 border transition-all relative ${
                   isTopMatch
                     ? 'border-emerald-500/60 shadow-lg shadow-emerald-950/40 bg-gradient-to-b from-zinc-900 to-zinc-950'

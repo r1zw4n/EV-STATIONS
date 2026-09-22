@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     lat
   )}&longitude=${encodeURIComponent(
     lng
-  )}&distance=10&distanceunit=KM&maxresults=3&compact=false&verbose=false`;
+  )}&distance=10&distanceunit=KM&maxresults=8&compact=false&verbose=false`;
 
   // 3. Call upstream with X-API-Key in header, never in URL
   try {
@@ -87,7 +87,9 @@ export default async function handler(req, res) {
     let defaultProviderLicense =
       'Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0)';
 
-    const stations = rawData.map((item) => {
+    const mergedMap = new Map();
+
+    for (const item of rawData) {
       const connections = Array.isArray(item.Connections) ? item.Connections : [];
       const powerKwList = connections
         .map((c) =>
@@ -139,7 +141,19 @@ export default async function handler(req, res) {
         addressLine = town || addressLine1;
       }
 
-      return {
+      const numberOfPoints =
+        item.NumberOfPoints ?? (connections.length > 0 ? connections.length : 1);
+
+      // Compare AddressInfo.AddressLine1 after trimming, lowercasing, and removing punctuation and repeated spaces
+      const normalizedAddress = addressLine1
+        .toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const mergeKey = normalizedAddress || `item_${item.ID}`;
+
+      const currentStation = {
         id: item.ID,
         title,
         addressLine,
@@ -148,13 +162,63 @@ export default async function handler(req, res) {
         longitude: item.AddressInfo?.Longitude ?? null,
         distance,
         highestPowerKW,
-        numberOfPoints:
-          item.NumberOfPoints ?? (connections.length > 0 ? connections.length : 1),
+        numberOfPoints,
         postcode: item.AddressInfo?.Postcode || null,
         dataProviderTitle: providerTitle,
         dataProviderLicense: providerLicense,
+        mergedCount: 1,
       };
+
+      if (!mergedMap.has(mergeKey)) {
+        mergedMap.set(mergeKey, currentStation);
+      } else {
+        const existing = mergedMap.get(mergeKey);
+
+        // Keep track of how many OCM entries this site came from
+        existing.mergedCount = (existing.mergedCount || 1) + 1;
+
+        // Keep the shorter distance
+        if (existing.distance === null) {
+          existing.distance = currentStation.distance;
+        } else if (currentStation.distance !== null && currentStation.distance < existing.distance) {
+          existing.distance = currentStation.distance;
+        }
+
+        // Take the LARGER numberOfPoints (never add them, they may be the same chargers)
+        const existingPts = typeof existing.numberOfPoints === 'number' ? existing.numberOfPoints : 1;
+        const currentPts = typeof currentStation.numberOfPoints === 'number' ? currentStation.numberOfPoints : 1;
+        existing.numberOfPoints = Math.max(existingPts, currentPts);
+
+        // Take the HIGHER highestPowerKW and keep the title of the entry with the higher kW
+        const existingKw = typeof existing.highestPowerKW === 'number' ? existing.highestPowerKW : -1;
+        const currentKw = typeof currentStation.highestPowerKW === 'number' ? currentStation.highestPowerKW : -1;
+
+        if (currentKw > existingKw) {
+          existing.highestPowerKW = currentStation.highestPowerKW;
+          existing.title = currentStation.title;
+          if (currentStation.addressLine) existing.addressLine = currentStation.addressLine;
+          if (currentStation.town) existing.town = currentStation.town;
+          if (currentStation.latitude) existing.latitude = currentStation.latitude;
+          if (currentStation.longitude) existing.longitude = currentStation.longitude;
+        } else if (existing.highestPowerKW === null && currentStation.highestPowerKW !== null) {
+          existing.highestPowerKW = currentStation.highestPowerKW;
+        }
+
+        if (!existing.postcode && currentStation.postcode) {
+          existing.postcode = currentStation.postcode;
+        }
+      }
+    }
+
+    // Sort by distance and return the 3 nearest distinct sites
+    const distinctStations = Array.from(mergedMap.values());
+    distinctStations.sort((a, b) => {
+      const distA = typeof a.distance === 'number' ? a.distance : Infinity;
+      const distB = typeof b.distance === 'number' ? b.distance : Infinity;
+      return distA - distB;
     });
+
+    const stations = distinctStations.slice(0, 3);
 
     return sendResponse(200, {
       stations,

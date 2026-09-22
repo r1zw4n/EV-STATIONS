@@ -91,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Location banner */}
         <div className="text-xs text-zinc-400 bg-zinc-900/90 rounded-lg px-3 py-1.5 mb-3 border border-zinc-800/80 flex items-center justify-between">
           <span className="truncate font-medium text-zinc-200">
-            {isGpsActive ? '[Near you]' : '[City Hall (default)]'}
+            {isGpsActive ? 'Near you' : 'City Hall (default)'}
           </span>
           <span
             className={`text-[11px] font-semibold px-2 py-0.5 rounded shrink-0 ml-2 border ${
