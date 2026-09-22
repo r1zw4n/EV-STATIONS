@@ -73,19 +73,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* Attribution & DataProvider Title */}
+          {/* Attribution */}
           <div className="pt-1.5 border-t border-zinc-800/60 text-center">
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
-              Charging location data from Open Charge Map — © Open Charge Map Contributors, licensed CC BY 4.0
+              Location Data — © Open Charge Map Contributors
             </p>
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight mt-0.5">
-              Real-time availability from LTA DataMall — licensed under Singapore Open Data Licence
+              Live-Availability Data — LTA DataMall (SG Open Data Licence)
             </p>
-            {dataProviderTitle && (
-              <p className="text-[10px] text-zinc-400 mt-0.5">
-                Data Provider: <span className="text-zinc-300 font-medium">{dataProviderTitle}</span>
-              </p>
-            )}
           </div>
         </div>
       </footer>
