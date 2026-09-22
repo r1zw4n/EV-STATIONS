@@ -20,6 +20,7 @@ interface Screen1Props {
   onNavigateToScreen2: (stationId?: string, postcode?: string) => void;
   onDataProviderLoaded?: (providerTitle: string | null) => void;
   onGpsStateChange?: (isGpsActive: boolean) => void;
+  batteryPct?: number;
 }
 
 type FetchState = 'loading' | 'empty' | 'refused' | 'unreachable' | 'success';
@@ -28,6 +29,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
   onNavigateToScreen2,
   onDataProviderLoaded,
   onGpsStateChange,
+  batteryPct = 20,
 }) => {
   const [stations, setStations] = useState<LiveStation[]>([]);
   const [fetchState, setFetchState] = useState<FetchState>('loading');
@@ -38,18 +40,27 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
   // Store whether a geolocation attempt is actively resolving
   const locationResolutionRef = useRef<boolean>(false);
 
-  // Calculate estimated finish charging time from 20% based on live PowerKW
-  // Assumes a standard 60 kWh EV battery: 80% charge needed = 48 kWh
-  const calculateChargeTimeFrom20 = (powerKw: number | null) => {
+  // Calculate estimated finish charging time based on batteryPct and live PowerKW
+  // energy needed = ([TARGET]% − battery%) of a [60] kWh battery, time = energy ÷ live kW × 60
+  const calculateChargeTime = (powerKw: number | null, currentBattery: number) => {
+    const targetPct = 100;
+    const clampedBattery = Math.min(Math.max(currentBattery, 5), 95);
+    const energyNeededKwh = ((targetPct - clampedBattery) / 100) * 60;
+
     if (!powerKw || powerKw <= 0) {
+      const fallbackMinutes = Math.max(1, Math.round((energyNeededKwh / 22) * 60));
+      const hours = Math.floor(fallbackMinutes / 60);
+      const mins = fallbackMinutes % 60;
+      const formatted = hours > 0 ? `${hours}h ${mins > 0 ? `${mins}m` : ''}`.trim() : `${fallbackMinutes}m`;
       return {
-        minutes: 131,
-        timeDisplay: '~2h 11m',
+        minutes: fallbackMinutes,
+        timeDisplay: `est. ~${formatted}`,
         speedDisplay: 'Unlisted kW',
         isEstimated: true,
+        energyNeededKwh,
       };
     }
-    const energyNeededKwh = 48; // 80% of 60 kWh battery
+
     const totalMinutes = Math.max(1, Math.round((energyNeededKwh / powerKw) * 60));
 
     if (totalMinutes >= 60) {
@@ -57,17 +68,19 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
       const mins = totalMinutes % 60;
       return {
         minutes: totalMinutes,
-        timeDisplay: `${hours}h ${mins > 0 ? `${mins}m` : ''}`.trim(),
+        timeDisplay: `est. ${hours}h ${mins > 0 ? `${mins}m` : ''}`.trim(),
         speedDisplay: `${powerKw} kW`,
         isEstimated: false,
+        energyNeededKwh,
       };
     }
 
     return {
       minutes: totalMinutes,
-      timeDisplay: `${totalMinutes} mins`,
+      timeDisplay: `est. ${totalMinutes}m`,
       speedDisplay: `${powerKw} kW`,
       isEstimated: false,
+      energyNeededKwh,
     };
   };
 
@@ -329,7 +342,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
       {fetchState === 'success' && (
         <div className="space-y-4">
           {stations.map((station, index) => {
-            const chargeCalc = calculateChargeTimeFrom20(station.highestPowerKW);
+            const chargeCalc = calculateChargeTime(station.highestPowerKW, batteryPct);
             const isTopMatch = index === 0;
 
             const addressText = [station.addressLine, station.town]
@@ -392,17 +405,17 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                     </div>
                   </div>
 
-                  {/* Calculated Time From 20% using Live PowerKW */}
+                  {/* Calculated Time From batteryPct using Live PowerKW */}
                   <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3">
                     <div className="text-[11px] font-semibold uppercase text-zinc-400 mb-1 flex items-center gap-1">
                       <Clock className="w-3 h-3 text-amber-400" />
-                      Time From 20%
+                      Time From {batteryPct}%
                     </div>
                     <div className="text-lg font-black text-amber-300 leading-none">
                       {chargeCalc.timeDisplay}
                     </div>
                     <div className="text-[11px] text-zinc-400 mt-1.5">
-                      {chargeCalc.isEstimated ? 'Est. standard AC' : 'To reach 100% full'}
+                      {chargeCalc.isEstimated ? 'est. based on 22 kW' : 'est. to 100% full'}
                     </div>
                   </div>
                 </div>

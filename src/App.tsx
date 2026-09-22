@@ -9,6 +9,7 @@ export default function App() {
   const [selectedPostalCode, setSelectedPostalCode] = useState<string | undefined>(undefined);
   const [dataProviderTitle, setDataProviderTitle] = useState<string | null>(null);
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
+  const [batteryPct, setBatteryPct] = useState<number>(20);
 
   const handleNavigateToScreen2 = (_stationId?: string, postcode?: string) => {
     if (postcode) {
@@ -30,6 +31,8 @@ export default function App() {
         <Header
           activeScreen={activeScreen}
           isGpsActive={isGpsActive}
+          batteryPct={batteryPct}
+          onBatteryChange={setBatteryPct}
           onSelectScreen={(screen) => {
             setActiveScreen(screen);
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -43,6 +46,7 @@ export default function App() {
               onNavigateToScreen2={handleNavigateToScreen2}
               onDataProviderLoaded={setDataProviderTitle}
               onGpsStateChange={setIsGpsActive}
+              batteryPct={batteryPct}
             />
           ) : (
             <Screen2Availability
@@ -63,7 +67,7 @@ export default function App() {
               <span className="font-medium text-zinc-300">EV STATIONS</span>
             </div>
             <div className="flex items-center gap-1 font-semibold text-emerald-400">
-              <span>Battery: 20%</span>
+              <span id="footer-battery-status">Battery: {batteryPct}%</span>
               <span className="text-zinc-600">•</span>
               <span className="text-zinc-400">Singapore</span>
             </div>

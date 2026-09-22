@@ -2,16 +2,23 @@ import React from 'react';
 import { BatteryCharging, Zap, MapPin, Gauge } from 'lucide-react';
 import { ScreenId } from '../types';
 
-const USER_CURRENT_BATTERY_PCT = 20;
 const USER_CURRENT_LOCATION_LABEL = 'Current Location: Bras Basah / City Hall, Singapore';
 
 interface HeaderProps {
   activeScreen: ScreenId;
   onSelectScreen: (screen: ScreenId) => void;
   isGpsActive?: boolean;
+  batteryPct: number;
+  onBatteryChange: (newPct: number) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeScreen, onSelectScreen, isGpsActive = false }) => {
+export const Header: React.FC<HeaderProps> = ({
+  activeScreen,
+  onSelectScreen,
+  isGpsActive = false,
+  batteryPct,
+  onBatteryChange,
+}) => {
   return (
     <header className="w-full bg-zinc-950 border-b border-zinc-800 sticky top-0 z-30 shadow-lg">
       <div className="max-w-xl mx-auto px-4 pt-4 pb-3">
@@ -40,19 +47,44 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, onSelectScreen, is
             </div>
           </div>
 
-          {/* Battery Status Pill */}
-          <div className="bg-zinc-900 border border-amber-500/40 px-3 py-1.5 rounded-full flex items-center gap-2 shrink-0">
-            <div className="relative flex items-center justify-center">
-              <BatteryCharging className="w-4 h-4 text-amber-400 animate-pulse" />
+          {/* Adjustable Battery Percentage Control */}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <div
+              id="battery-adjust-control"
+              className="bg-zinc-900 border border-amber-500/40 px-1.5 py-1 rounded-xl flex items-center gap-1 shadow-sm"
+            >
+              <button
+                type="button"
+                id="btn-battery-minus"
+                aria-label="Decrease battery percentage by 5%"
+                disabled={batteryPct <= 5}
+                onClick={() => onBatteryChange(Math.max(5, batteryPct - 5))}
+                className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-100 font-bold text-lg flex items-center justify-center transition-colors cursor-pointer"
+              >
+                −
+              </button>
+
+              <div className="flex items-center gap-1 px-1.5 min-w-[58px] justify-center text-center">
+                <BatteryCharging className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+                <span className="text-sm font-black text-amber-300 tabular-nums">
+                  {batteryPct}%
+                </span>
+              </div>
+
+              <button
+                type="button"
+                id="btn-battery-plus"
+                aria-label="Increase battery percentage by 5%"
+                disabled={batteryPct >= 95}
+                onClick={() => onBatteryChange(Math.min(95, batteryPct + 5))}
+                className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-100 font-bold text-lg flex items-center justify-center transition-colors cursor-pointer"
+              >
+                +
+              </button>
             </div>
-            <div className="text-right">
-              <span className="text-xs uppercase font-semibold tracking-wider text-zinc-400 block leading-none">
-                Battery
-              </span>
-              <span className="text-sm font-bold text-amber-400 leading-none">
-                {USER_CURRENT_BATTERY_PCT}%
-              </span>
-            </div>
+            <span className="text-[10px] text-zinc-400 font-medium tracking-tight">
+              60 kWh battery, to 100%
+            </span>
           </div>
         </div>
 
