@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BatteryCharging, Zap, MapPin, Gauge } from 'lucide-react';
 import { ScreenId } from '../types';
 
@@ -8,6 +8,7 @@ interface HeaderProps {
   activeScreen: ScreenId;
   onSelectScreen: (screen: ScreenId) => void;
   isGpsActive?: boolean;
+  gpsCoords?: { lat: number; lng: number } | null;
   batteryPct: number;
   onBatteryChange: (newPct: number) => void;
 }
@@ -16,9 +17,59 @@ export const Header: React.FC<HeaderProps> = ({
   activeScreen,
   onSelectScreen,
   isGpsActive = false,
+  gpsCoords = null,
   batteryPct,
   onBatteryChange,
 }) => {
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
+  const lastFetchedKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isGpsActive || !gpsCoords) {
+      setPlaceLabel(null);
+      lastFetchedKeyRef.current = null;
+      return;
+    }
+
+    // Call /api/where at most once per GPS fix
+    const key = `${gpsCoords.lat.toFixed(3)},${gpsCoords.lng.toFixed(3)}`;
+    if (lastFetchedKeyRef.current === key) {
+      return;
+    }
+    lastFetchedKeyRef.current = key;
+
+    let isMounted = true;
+
+    fetch(`/api/where?lat=${gpsCoords.lat}&lng=${gpsCoords.lng}`)
+      .then((res) => {
+        if (!res.ok) return { label: null };
+        return res.json();
+      })
+      .then((data: { label?: string | null }) => {
+        if (isMounted) {
+          if (data && typeof data.label === 'string' && data.label.trim()) {
+            setPlaceLabel(data.label.trim());
+          } else {
+            setPlaceLabel(null);
+          }
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setPlaceLabel(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isGpsActive, gpsCoords?.lat, gpsCoords?.lng]);
+
+  const displayLocation = !isGpsActive
+    ? 'City Hall (default)'
+    : placeLabel
+    ? `Near ${placeLabel}`
+    : 'Near you';
   return (
     <header className="w-full bg-zinc-950 border-b border-zinc-800 sticky top-0 z-30 shadow-lg">
       <div className="max-w-xl mx-auto px-4 pt-4 pb-3">
@@ -91,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Location banner */}
         <div className="text-xs text-zinc-400 bg-zinc-900/90 rounded-lg px-3 py-1.5 mb-3 border border-zinc-800/80 flex items-center justify-between">
           <span className="truncate font-medium text-zinc-200">
-            {isGpsActive ? 'Near you' : 'City Hall (default)'}
+            {displayLocation}
           </span>
           <span
             className={`text-[11px] font-semibold px-2 py-0.5 rounded shrink-0 ml-2 border ${

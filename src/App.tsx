@@ -9,7 +9,13 @@ export default function App() {
   const [selectedPostalCode, setSelectedPostalCode] = useState<string | undefined>(undefined);
   const [dataProviderTitle, setDataProviderTitle] = useState<string | null>(null);
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
+  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [batteryPct, setBatteryPct] = useState<number>(20);
+
+  const handleGpsStateChange = (active: boolean, coords?: { lat: number; lng: number } | null) => {
+    setIsGpsActive(active);
+    setGpsCoords(active && coords ? coords : null);
+  };
 
   const handleNavigateToScreen2 = (_stationId?: string, postcode?: string) => {
     if (postcode) {
@@ -31,6 +37,7 @@ export default function App() {
         <Header
           activeScreen={activeScreen}
           isGpsActive={isGpsActive}
+          gpsCoords={gpsCoords}
           batteryPct={batteryPct}
           onBatteryChange={setBatteryPct}
           onSelectScreen={(screen) => {
@@ -45,7 +52,7 @@ export default function App() {
             <Screen1Stations
               onNavigateToScreen2={handleNavigateToScreen2}
               onDataProviderLoaded={setDataProviderTitle}
-              onGpsStateChange={setIsGpsActive}
+              onGpsStateChange={handleGpsStateChange}
               batteryPct={batteryPct}
             />
           ) : (
@@ -76,7 +83,9 @@ export default function App() {
           {/* Attribution */}
           <div className="pt-1.5 border-t border-zinc-800/60 text-center">
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
-              Location Data — © Open Charge Map Contributors
+              <span>Location Data — © Open Charge Map Contributors</span>
+              <span className="text-zinc-600 mx-1.5">•</span>
+              <span>Place names © OpenStreetMap contributors</span>
             </p>
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight mt-0.5">
               Live-Availability Data — LTA DataMall (SG Open Data Licence)

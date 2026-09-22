@@ -19,7 +19,7 @@ const GEOLOCATION_TIMEOUT_MS = 6000;
 interface Screen1Props {
   onNavigateToScreen2: (stationId?: string, postcode?: string) => void;
   onDataProviderLoaded?: (providerTitle: string | null) => void;
-  onGpsStateChange?: (isGpsActive: boolean) => void;
+  onGpsStateChange?: (isGpsActive: boolean, coords?: { lat: number; lng: number } | null) => void;
   batteryPct?: number;
 }
 
@@ -162,7 +162,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
         locationResolutionRef.current = false;
         setIsLocationDeniedOrTimedOut(true);
         setCurrentCoords(CITY_HALL_COORDS);
-        if (onGpsStateChange) onGpsStateChange(false);
+        if (onGpsStateChange) onGpsStateChange(false, null);
         fetchLiveStations(CITY_HALL_COORDS.lat, CITY_HALL_COORDS.lng);
       }
     }, GEOLOCATION_TIMEOUT_MS);
@@ -180,7 +180,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
 
           setIsLocationDeniedOrTimedOut(false);
           setCurrentCoords({ lat: realLat, lng: realLng });
-          if (onGpsStateChange) onGpsStateChange(true);
+          if (onGpsStateChange) onGpsStateChange(true, { lat: realLat, lng: realLng });
 
           fetchLiveStations(realLat, realLng);
         },
@@ -193,7 +193,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
           console.warn('Geolocation access denied or unavailable:', error?.message);
           setIsLocationDeniedOrTimedOut(true);
           setCurrentCoords(CITY_HALL_COORDS);
-          if (onGpsStateChange) onGpsStateChange(false);
+          if (onGpsStateChange) onGpsStateChange(false, null);
 
           fetchLiveStations(CITY_HALL_COORDS.lat, CITY_HALL_COORDS.lng);
         },
@@ -209,7 +209,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
       locationResolutionRef.current = false;
       setIsLocationDeniedOrTimedOut(true);
       setCurrentCoords(CITY_HALL_COORDS);
-      if (onGpsStateChange) onGpsStateChange(false);
+      if (onGpsStateChange) onGpsStateChange(false, null);
       fetchLiveStations(CITY_HALL_COORDS.lat, CITY_HALL_COORDS.lng);
     }
   }, [fetchLiveStations, onGpsStateChange]);

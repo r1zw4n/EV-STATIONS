@@ -39,6 +39,18 @@ export default defineConfig(() => {
                 return;
               }
             }
+            if (req.url?.startsWith('/api/where')) {
+              try {
+                const { default: handler } = await import('./api/where.js');
+                await handler(req, res);
+                return;
+              } catch (err) {
+                console.error('Dev middleware error on /api/where:', err);
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'Internal error handling /api/where' }));
+                return;
+              }
+            }
             if (req.url?.startsWith('/api/health')) {
               try {
                 const { default: handler } = await import('./api/health.js');
