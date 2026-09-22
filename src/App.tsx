@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Header } from './components/Header';
 import { Screen1Stations } from './components/Screen1Stations';
 import { Screen2Availability } from './components/Screen2Availability';
@@ -12,10 +12,25 @@ export default function App() {
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [batteryPct, setBatteryPct] = useState<number>(20);
 
-  const handleGpsStateChange = (active: boolean, coords?: { lat: number; lng: number } | null) => {
-    setIsGpsActive(active);
-    setGpsCoords(active && coords ? coords : null);
-  };
+  const handleGpsStateChange = useCallback(
+    (active: boolean, coords?: { lat: number; lng: number } | null) => {
+      setIsGpsActive((prev) => (prev === active ? prev : active));
+      setGpsCoords((prev) => {
+        const nextCoords = active && coords ? coords : null;
+        if (!prev && !nextCoords) return prev;
+        if (
+          prev &&
+          nextCoords &&
+          prev.lat === nextCoords.lat &&
+          prev.lng === nextCoords.lng
+        ) {
+          return prev;
+        }
+        return nextCoords;
+      });
+    },
+    []
+  );
 
   const handleNavigateToScreen2 = (_stationId?: string, postcode?: string) => {
     if (postcode) {
