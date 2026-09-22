@@ -38,6 +38,9 @@ export interface LiveStation {
   dataProviderTitle: string | null;
   dataProviderLicense: string | null;
   mergedCount?: number;
+  liveAvailable?: number;
+  liveTotal?: number;
+  ltaFiltered?: boolean;
 }
 
 export interface LiveStationsApiResponse {
@@ -49,6 +52,8 @@ export interface LiveStationsApiResponse {
   refused?: boolean;
   unreachable?: boolean;
   upstreamStatus?: number | null;
+  reason?: string;
+  ltaFiltered?: boolean;
 }
 
 export interface LtaConnector {

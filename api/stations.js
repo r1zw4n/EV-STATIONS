@@ -3,9 +3,9 @@
  * Located at api/stations.js in the project root for Vercel deployment.
  */
 export default async function handler(req, res) {
-  // Cache response for one hour as required
+  // Cache response with updated s-maxage=300, stale-while-revalidate=600
   if (typeof res.setHeader === 'function') {
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=7200');
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     res.setHeader('Content-Type', 'application/json');
   }
 
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     lat
   )}&longitude=${encodeURIComponent(
     lng
-  )}&distance=10&distanceunit=KM&maxresults=8&compact=false&verbose=false`;
+  )}&distance=10&distanceunit=KM&maxresults=20&compact=false&verbose=false`;
 
   // 3. Call upstream with X-API-Key in header, never in URL
   try {
@@ -210,7 +210,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Sort by distance and return the 3 nearest distinct sites
+    // Sort by distance
     const distinctStations = Array.from(mergedMap.values());
     distinctStations.sort((a, b) => {
       const distA = typeof a.distance === 'number' ? a.distance : Infinity;
@@ -218,10 +218,124 @@ export default async function handler(req, res) {
       return distA - distB;
     });
 
-    const stations = distinctStations.slice(0, 3);
+    // Check if LTA_ACCOUNT_KEY is present
+    const ltaKey = process.env.LTA_ACCOUNT_KEY;
+    const isLtaKeyMissing =
+      !ltaKey ||
+      typeof ltaKey !== 'string' ||
+      ltaKey.trim() === '' ||
+      ltaKey === 'undefined';
+
+    // If LTA_ACCOUNT_KEY is missing, skip the LTA check entirely and return unfiltered OCM list
+    if (isLtaKeyMissing) {
+      const stations = distinctStations.slice(0, 3).map((st) => ({
+        ...st,
+        ltaFiltered: false,
+      }));
+
+      return sendResponse(200, {
+        stations,
+        ltaFiltered: false,
+        dataProviderTitle: defaultProviderTitle,
+        dataProviderLicense: defaultProviderLicense,
+      });
+    }
+
+    // Take the first 12 that have an AddressInfo.Postcode (drop any without one)
+    const candidates = distinctStations
+      .filter((s) => s.postcode && String(s.postcode).trim() !== '')
+      .slice(0, 12);
+
+    // Call LTA in parallel with Promise.all
+    const checkLtaAvailability = async (station) => {
+      try {
+        const code = String(station.postcode).trim();
+        const ltaUrl = `https://datamall2.mytransport.sg/ltaodataservice/EVChargingPoints?PostalCode=${encodeURIComponent(
+          code
+        )}`;
+        const ltaRes = await fetch(ltaUrl, {
+          method: 'GET',
+          headers: {
+            AccountKey: ltaKey.trim(),
+            Accept: 'application/json',
+          },
+        });
+
+        if (!ltaRes.ok) {
+          return null;
+        }
+
+        const ltaData = await ltaRes.json();
+
+        let evLocations = [];
+        if (Array.isArray(ltaData)) {
+          if (ltaData.length > 0 && ltaData[0]?.value?.evLocationsData) {
+            evLocations = ltaData[0].value.evLocationsData;
+          } else if (ltaData.length > 0 && ltaData[0]?.evLocationsData) {
+            evLocations = ltaData[0].evLocationsData;
+          }
+        } else if (ltaData && typeof ltaData === 'object') {
+          if (ltaData.value?.evLocationsData) {
+            evLocations = ltaData.value.evLocationsData;
+          } else if (ltaData.evLocationsData) {
+            evLocations = ltaData.evLocationsData;
+          }
+        }
+
+        if (!Array.isArray(evLocations) || evLocations.length === 0) {
+          return null;
+        }
+
+        let liveAvailable = 0;
+        let liveTotal = 0;
+
+        for (const loc of evLocations) {
+          const points = Array.isArray(loc.chargingPoints) ? loc.chargingPoints : [];
+          for (const pt of points) {
+            const plugTypes = Array.isArray(pt.plugTypes) ? pt.plugTypes : [];
+            for (const plug of plugTypes) {
+              const evIds = Array.isArray(plug.evIds) ? plug.evIds : [];
+              for (const ev of evIds) {
+                liveTotal += 1;
+                if (ev && ev.status === '1') {
+                  liveAvailable += 1;
+                }
+              }
+            }
+          }
+        }
+
+        return {
+          ...station,
+          liveAvailable,
+          liveTotal,
+          ltaFiltered: true,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const ltaResults = await Promise.all(candidates.map((s) => checkLtaAvailability(s)));
+    const matchedStations = ltaResults.filter(Boolean);
+
+    // Return the 3 nearest that remain
+    const stations = matchedStations.slice(0, 3);
+
+    // If none remain, return stations: [] with reason: "no-lta-match"
+    if (stations.length === 0) {
+      return sendResponse(200, {
+        stations: [],
+        reason: 'no-lta-match',
+        ltaFiltered: true,
+        dataProviderTitle: defaultProviderTitle,
+        dataProviderLicense: defaultProviderLicense,
+      });
+    }
 
     return sendResponse(200, {
       stations,
+      ltaFiltered: true,
       dataProviderTitle: defaultProviderTitle,
       dataProviderLicense: defaultProviderLicense,
     });

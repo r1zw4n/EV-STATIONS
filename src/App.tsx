@@ -39,9 +39,7 @@ export default function App() {
     postcode?: string,
     stationTitle?: string
   ) => {
-    if (postcode) {
-      setSelectedPostalCode(postcode);
-    }
+    setSelectedPostalCode(postcode ? postcode.trim() : '');
     setSelectedStationName(stationTitle);
     setArrivedFromScreen1(true);
     setActiveScreen('screen2');

@@ -30,11 +30,17 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
   arrivedFromScreen1 = false,
   onNavigateToScreen1,
 }) => {
-  const [postalInput, setPostalInput] = useState<string>(initialPostalCode || '038983');
-  const [activePostal, setActivePostal] = useState<string>(initialPostalCode || '038983');
+  const [postalInput, setPostalInput] = useState<string>(
+    arrivedFromScreen1 ? (initialPostalCode || '') : (initialPostalCode || '038983')
+  );
+  const [activePostal, setActivePostal] = useState<string>(
+    arrivedFromScreen1 ? (initialPostalCode || '') : (initialPostalCode || '038983')
+  );
   const [userSearched, setUserSearched] = useState<boolean>(false);
   const postalInputRef = useRef<HTMLInputElement>(null);
-  const [fetchState, setFetchState] = useState<FetchState>('loading');
+  const [fetchState, setFetchState] = useState<FetchState>(
+    arrivedFromScreen1 && !initialPostalCode ? 'empty' : 'loading'
+  );
   const [groups, setGroups] = useState<LtaSiteGroup[]>([]);
   const [totalAvailable, setTotalAvailable] = useState<number>(0);
   const [totalConnectors, setTotalConnectors] = useState<number>(0);
@@ -43,16 +49,34 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
 
   // When initialPostalCode changes from Screen 1 navigation, update and fetch
   useEffect(() => {
-    if (initialPostalCode && initialPostalCode.trim() !== '') {
+    if (arrivedFromScreen1) {
+      const trimmed = initialPostalCode ? initialPostalCode.trim() : '';
+      setPostalInput(trimmed);
+      setActivePostal(trimmed);
+      setUserSearched(false);
+      if (!trimmed) {
+        setFetchState('empty');
+        setGroups([]);
+        setTotalAvailable(0);
+        setTotalConnectors(0);
+      }
+    } else if (initialPostalCode && initialPostalCode.trim() !== '') {
       setPostalInput(initialPostalCode.trim());
       setActivePostal(initialPostalCode.trim());
-      setUserSearched(false);
     }
-  }, [initialPostalCode]);
+  }, [initialPostalCode, arrivedFromScreen1]);
 
   const fetchAvailability = useCallback(async (postalToFetch: string) => {
+    const cleanPostal = postalToFetch.trim();
+    if (!cleanPostal) {
+      setFetchState('empty');
+      setGroups([]);
+      setTotalAvailable(0);
+      setTotalConnectors(0);
+      return;
+    }
+
     setFetchState('loading');
-    const cleanPostal = postalToFetch.trim() || '038983';
 
     try {
       const res = await fetch(`/api/availability?postal=${encodeURIComponent(cleanPostal)}`);
@@ -192,7 +216,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
           </button>
         </div>
         <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-2 px-1">
-          <span>Current Location Code: <strong className="text-zinc-200">{activePostal}</strong></span>
+          <span>Current Location Code: <strong className="text-zinc-200">{activePostal || '—'}</strong></span>
           <span className="text-zinc-400">Postal search</span>
         </div>
       </form>
@@ -227,14 +251,20 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
             <Info className="w-6 h-6" />
           </div>
           {arrivedFromScreen1 && !userSearched ? (
-            <>
+            !activePostal ? (
               <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
-                LTA has no live status for this charger
+                Open Charge Map has no postal code for {stationName || 'this station'}, so we can't ask LTA about it.
               </p>
-              <p className="text-xs text-zinc-400 mt-2 max-w-md mx-auto leading-relaxed">
-                {stationName || 'This station'} is listed on Open Charge Map at postal code {activePostal}, but LTA's registry has no public chargers there. The Open Charge Map entry may be out of date. Live status is only available for LTA-registered chargers.
-              </p>
-            </>
+            ) : (
+              <>
+                <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
+                  LTA has no live status for this charger
+                </p>
+                <p className="text-xs text-zinc-400 mt-2 max-w-md mx-auto leading-relaxed">
+                  {stationName || 'This station'} is listed on Open Charge Map at postal code {activePostal}, but LTA's registry has no public chargers there. The Open Charge Map entry may be out of date. Live status is only available for LTA-registered chargers.
+                </p>
+              </>
+            )
           ) : (
             <>
               <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">

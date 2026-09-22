@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Info,
 } from 'lucide-react';
-import { LiveStation, LiveStationsApiResponse, LtaAvailabilityApiResponse } from '../types';
+import { LiveStation, LiveStationsApiResponse } from '../types';
 
 const CITY_HALL_COORDS = { lat: 1.3521, lng: 103.8198 };
 const GEOLOCATION_TIMEOUT_MS = 6000;
@@ -31,7 +31,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
   batteryPct = 20,
 }) => {
   const [stations, setStations] = useState<LiveStation[]>([]);
-  const [stationTags, setStationTags] = useState<Record<string | number, string | null>>({});
+  const [emptyReason, setEmptyReason] = useState<string | null>(null);
   const [fetchState, setFetchState] = useState<FetchState>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLocationDeniedOrTimedOut, setIsLocationDeniedOrTimedOut] = useState<boolean>(false);
@@ -39,60 +39,6 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
 
   // Store whether a geolocation attempt is actively resolving
   const locationResolutionRef = useRef<boolean>(false);
-
-  // Asynchronously query LTA availability tags after the stations load without blocking rendering
-  useEffect(() => {
-    if (stations.length === 0) {
-      setStationTags({});
-      return;
-    }
-
-    let isMounted = true;
-
-    stations.forEach(async (station) => {
-      const rawPostcode = station.postcode?.trim();
-
-      // If no postcode from OCM, show NO tag at all
-      if (!rawPostcode) {
-        return;
-      }
-
-      // Call own /api/availability?postal=<postcode> once
-      try {
-        const res = await fetch(`/api/availability?postal=${encodeURIComponent(rawPostcode)}`);
-        if (!res.ok) {
-          // Upstream/call failure → show NO tag at all
-          return;
-        }
-
-        const data: LtaAvailabilityApiResponse = await res.json();
-        if (data.refused || data.unreachable) {
-          // Failure → show NO tag at all
-          return;
-        }
-
-        const siteGroups = Array.isArray(data.groups) ? data.groups : [];
-
-        // Only show a tag when LTA returns chargers: "Live: N of M free"
-        if (siteGroups.length > 0) {
-          const free = typeof data.totalAvailable === 'number' ? data.totalAvailable : 0;
-          const total = typeof data.totalConnectors === 'number' ? data.totalConnectors : 0;
-          if (isMounted) {
-            setStationTags((prev) => ({
-              ...prev,
-              [station.id]: `Live: ${free} of ${total} free`,
-            }));
-          }
-        }
-      } catch {
-        // Network/call failure → show NO tag at all
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [stations]);
 
   // Calculate estimated finish charging time based on batteryPct and live PowerKW
   // energy needed = ([TARGET]% − battery%) of a [60] kWh battery, time = energy ÷ live kW × 60
@@ -188,9 +134,11 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
 
         if (stationList.length === 0) {
           setFetchState('empty');
+          setEmptyReason(data.reason || null);
           return;
         }
 
+        setEmptyReason(null);
         setStations(stationList.slice(0, 3));
         setFetchState('success');
 
@@ -324,7 +272,9 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
             <Info className="w-6 h-6" />
           </div>
           <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
-            No EV charging stations were found within 10 km of your selected Singapore location.
+            {emptyReason === 'no-lta-match'
+              ? "Open Charge Map lists chargers near you, but none of them is in LTA's registry, so we can't confirm they exist. Try Screen 2 with a postal code you know."
+              : 'No EV charging stations were found within 10 km of your selected Singapore location.'}
           </p>
           <button
             type="button"
@@ -410,7 +360,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
               : [station.addressLine, station.addressLine !== station.town ? station.town : null];
 
             const addressText = addressParts.filter(Boolean).join(', ') || 'Singapore';
-            const liveStatusTag = stationTags[station.id];
+            const hasLiveStatus = typeof station.liveTotal === 'number';
 
             return (
               <article
@@ -429,10 +379,10 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                     <h3 className="text-base font-bold text-white tracking-tight leading-snug">
                       {station.title}
                     </h3>
-                    {liveStatusTag && (
+                    {hasLiveStatus && (
                       <div className="mt-1">
                         <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
-                          {liveStatusTag}
+                          Live: {station.liveAvailable ?? 0} of {station.liveTotal} free
                         </span>
                       </div>
                     )}
@@ -446,8 +396,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                     type="button"
                     id={`btn-view-slots-${station.id}`}
                     onClick={() => {
-                      const postal =
-                        station.postcode || station.addressLine?.match(/\b(\d{6})\b/)?.[1] || undefined;
+                      const postal = station.postcode?.trim() || undefined;
                       onNavigateToScreen2(String(station.id), postal, station.title);
                     }}
                     className="min-h-[44px] px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white border border-zinc-700 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap"
