@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Zap,
   CheckCircle2,
@@ -17,6 +17,8 @@ import { LtaSiteGroup, LtaAvailabilityApiResponse } from '../types';
 
 interface Screen2Props {
   initialPostalCode?: string;
+  stationName?: string;
+  arrivedFromScreen1?: boolean;
   onNavigateToScreen1: () => void;
 }
 
@@ -24,10 +26,14 @@ type FetchState = 'loading' | 'empty' | 'refused' | 'unreachable' | 'success';
 
 export const Screen2Availability: React.FC<Screen2Props> = ({
   initialPostalCode,
+  stationName,
+  arrivedFromScreen1 = false,
   onNavigateToScreen1,
 }) => {
   const [postalInput, setPostalInput] = useState<string>(initialPostalCode || '038983');
   const [activePostal, setActivePostal] = useState<string>(initialPostalCode || '038983');
+  const [userSearched, setUserSearched] = useState<boolean>(false);
+  const postalInputRef = useRef<HTMLInputElement>(null);
   const [fetchState, setFetchState] = useState<FetchState>('loading');
   const [groups, setGroups] = useState<LtaSiteGroup[]>([]);
   const [totalAvailable, setTotalAvailable] = useState<number>(0);
@@ -40,6 +46,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
     if (initialPostalCode && initialPostalCode.trim() !== '') {
       setPostalInput(initialPostalCode.trim());
       setActivePostal(initialPostalCode.trim());
+      setUserSearched(false);
     }
   }, [initialPostalCode]);
 
@@ -109,6 +116,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
     e.preventDefault();
     const clean = postalInput.trim();
     if (clean) {
+      setUserSearched(true);
       setActivePostal(clean);
     }
   };
@@ -163,6 +171,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
               <Search className="w-4 h-4" />
             </div>
             <input
+              ref={postalInputRef}
               id="postal-code-input"
               type="text"
               pattern="[0-9]{6}"
@@ -217,22 +226,36 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
           <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400">
             <Info className="w-6 h-6" />
           </div>
-          <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
-            No EV-Stations found - Try another Location!
-          </p>
-          <p className="text-xs text-zinc-400 mt-2">
-            No registered LTA charging points returned for postal code {activePostal}.
-          </p>
+          {arrivedFromScreen1 && !userSearched ? (
+            <>
+              <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
+                LTA has no live status for this charger
+              </p>
+              <p className="text-xs text-zinc-400 mt-2 max-w-md mx-auto leading-relaxed">
+                {stationName || 'This station'} is listed on Open Charge Map at postal code {activePostal}, but LTA's registry has no public chargers there. The Open Charge Map entry may be out of date. Live status is only available for LTA-registered chargers.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
+                No EV-Stations found - Try another Location!
+              </p>
+              <p className="text-xs text-zinc-400 mt-2">
+                No registered LTA charging points returned for postal code {activePostal}.
+              </p>
+            </>
+          )}
           <button
             type="button"
+            id="btn-search-another-postal"
             onClick={() => {
-              setPostalInput('038983');
-              setActivePostal('038983');
+              setPostalInput('');
+              postalInputRef.current?.focus();
             }}
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer"
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer min-h-[44px]"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset to Suntec City (038983)</span>
+            <Search className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Search another postal code</span>
           </button>
         </div>
       )}

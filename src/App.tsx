@@ -7,6 +7,8 @@ import { ScreenId } from './types';
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>('screen1');
   const [selectedPostalCode, setSelectedPostalCode] = useState<string | undefined>(undefined);
+  const [selectedStationName, setSelectedStationName] = useState<string | undefined>(undefined);
+  const [arrivedFromScreen1, setArrivedFromScreen1] = useState<boolean>(false);
   const [dataProviderTitle, setDataProviderTitle] = useState<string | null>(null);
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -32,10 +34,16 @@ export default function App() {
     []
   );
 
-  const handleNavigateToScreen2 = (_stationId?: string, postcode?: string) => {
+  const handleNavigateToScreen2 = (
+    _stationId?: string,
+    postcode?: string,
+    stationTitle?: string
+  ) => {
     if (postcode) {
       setSelectedPostalCode(postcode);
     }
+    setSelectedStationName(stationTitle);
+    setArrivedFromScreen1(true);
     setActiveScreen('screen2');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -56,6 +64,10 @@ export default function App() {
           batteryPct={batteryPct}
           onBatteryChange={setBatteryPct}
           onSelectScreen={(screen) => {
+            if (screen === 'screen2') {
+              setArrivedFromScreen1(false);
+              setSelectedStationName(undefined);
+            }
             setActiveScreen(screen);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
@@ -73,6 +85,8 @@ export default function App() {
           ) : (
             <Screen2Availability
               initialPostalCode={selectedPostalCode}
+              stationName={selectedStationName}
+              arrivedFromScreen1={arrivedFromScreen1}
               onNavigateToScreen1={handleNavigateToScreen1}
             />
           )}
