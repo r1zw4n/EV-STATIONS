@@ -257,6 +257,20 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
             <Search className="w-3.5 h-3.5 text-emerald-400" />
             <span>Search another postal code</span>
           </button>
+          <div className="mt-3">
+            <button
+              type="button"
+              id="link-try-suntec"
+              onClick={() => {
+                setPostalInput('038983');
+                setActivePostal('038983');
+                setUserSearched(true);
+              }}
+              className="text-xs text-zinc-400 hover:text-emerald-400 underline underline-offset-4 transition-colors cursor-pointer"
+            >
+              Try Suntec City (038983)
+            </button>
+          </div>
         </div>
       )}
 

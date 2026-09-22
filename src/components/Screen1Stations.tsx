@@ -22,11 +22,6 @@ interface Screen1Props {
   batteryPct?: number;
 }
 
-interface StationTagInfo {
-  text: string;
-  isUnavailable: boolean;
-}
-
 type FetchState = 'loading' | 'empty' | 'refused' | 'unreachable' | 'success';
 
 export const Screen1Stations: React.FC<Screen1Props> = ({
@@ -36,7 +31,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
   batteryPct = 20,
 }) => {
   const [stations, setStations] = useState<LiveStation[]>([]);
-  const [stationTags, setStationTags] = useState<Record<string | number, StationTagInfo | null>>({});
+  const [stationTags, setStationTags] = useState<Record<string | number, string | null>>({});
   const [fetchState, setFetchState] = useState<FetchState>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLocationDeniedOrTimedOut, setIsLocationDeniedOrTimedOut] = useState<boolean>(false);
@@ -57,17 +52,8 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
     stations.forEach(async (station) => {
       const rawPostcode = station.postcode?.trim();
 
-      // No postcode from OCM → "No postal code listed"
+      // If no postcode from OCM, show NO tag at all
       if (!rawPostcode) {
-        if (isMounted) {
-          setStationTags((prev) => ({
-            ...prev,
-            [station.id]: {
-              text: 'No postal code listed',
-              isUnavailable: true,
-            },
-          }));
-        }
         return;
       }
 
@@ -75,45 +61,31 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
       try {
         const res = await fetch(`/api/availability?postal=${encodeURIComponent(rawPostcode)}`);
         if (!res.ok) {
-          // Upstream/call failure → show no tag at all
+          // Upstream/call failure → show NO tag at all
           return;
         }
 
         const data: LtaAvailabilityApiResponse = await res.json();
         if (data.refused || data.unreachable) {
-          // Failure → show no tag at all
+          // Failure → show NO tag at all
           return;
         }
 
         const siteGroups = Array.isArray(data.groups) ? data.groups : [];
 
+        // Only show a tag when LTA returns chargers: "Live: N of M free"
         if (siteGroups.length > 0) {
-          // Has chargers with live status → "Live status: N of M free"
           const free = typeof data.totalAvailable === 'number' ? data.totalAvailable : 0;
           const total = typeof data.totalConnectors === 'number' ? data.totalConnectors : 0;
           if (isMounted) {
             setStationTags((prev) => ({
               ...prev,
-              [station.id]: {
-                text: `Live status: ${free} of ${total} free`,
-                isUnavailable: false,
-              },
-            }));
-          }
-        } else {
-          // LTA returns no locations → "Not in LTA registry"
-          if (isMounted) {
-            setStationTags((prev) => ({
-              ...prev,
-              [station.id]: {
-                text: 'Not in LTA registry',
-                isUnavailable: true,
-              },
+              [station.id]: `Live: ${free} of ${total} free`,
             }));
           }
         }
       } catch {
-        // Network failure → show no tag at all
+        // Network/call failure → show NO tag at all
       }
     });
 
@@ -438,9 +410,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
               : [station.addressLine, station.addressLine !== station.town ? station.town : null];
 
             const addressText = addressParts.filter(Boolean).join(', ') || 'Singapore';
-            const stationTag = stationTags[station.id];
-            const isActionDisabled = stationTag?.isUnavailable === true;
-            const buttonLabel = isActionDisabled ? 'No live status' : 'Check Slots';
+            const liveStatusTag = stationTags[station.id];
 
             return (
               <article
@@ -459,16 +429,10 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                     <h3 className="text-base font-bold text-white tracking-tight leading-snug">
                       {station.title}
                     </h3>
-                    {stationTag && (
+                    {liveStatusTag && (
                       <div className="mt-1">
-                        <span
-                          className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md ${
-                            stationTag.isUnavailable
-                              ? 'bg-zinc-800 text-zinc-400 border border-zinc-700/60'
-                              : 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/50'
-                          }`}
-                        >
-                          {stationTag.text}
+                        <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+                          {liveStatusTag}
                         </span>
                       </div>
                     )}
@@ -481,21 +445,15 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                   <button
                     type="button"
                     id={`btn-view-slots-${station.id}`}
-                    disabled={isActionDisabled}
                     onClick={() => {
-                      if (isActionDisabled) return;
                       const postal =
                         station.postcode || station.addressLine?.match(/\b(\d{6})\b/)?.[1] || undefined;
                       onNavigateToScreen2(String(station.id), postal, station.title);
                     }}
-                    className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors shrink-0 whitespace-nowrap ${
-                      isActionDisabled
-                        ? 'bg-zinc-900 text-zinc-500 border-zinc-800 cursor-not-allowed opacity-60'
-                        : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 cursor-pointer'
-                    }`}
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white border border-zinc-700 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap"
                   >
-                    <span>{buttonLabel}</span>
-                    {!isActionDisabled && <ChevronRight className="w-4 h-4 text-emerald-400 shrink-0" />}
+                    <span>Check Slots</span>
+                    <ChevronRight className="w-4 h-4 text-emerald-400 shrink-0" />
                   </button>
                 </div>
 
