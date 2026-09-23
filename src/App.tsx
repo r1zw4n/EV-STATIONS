@@ -122,6 +122,36 @@ export default function App() {
             <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight">
               • Place Names — © OpenStreetMap contributors
             </p>
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 leading-tight pt-1">
+              This page uses Microsoft Clarity and Disqus, which use cookies to record how visitors use the site and to host comments. By using this page you agree that we and Microsoft may collect and use this data. See the{' '}
+              <a
+                href="https://www.microsoft.com/privacy/privacystatement"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-zinc-200"
+              >
+                Microsoft Privacy Statement
+              </a>
+              , the{' '}
+              <a
+                href="https://disqus.com/privacy-policy/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-zinc-200"
+              >
+                Disqus privacy policy
+              </a>{' '}
+              and the{' '}
+              <a
+                href="https://disqus.com/data-sharing-settings/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-zinc-200"
+              >
+                Disqus data sharing settings
+              </a>
+              .
+            </p>
           </div>
         </div>
       </footer>
