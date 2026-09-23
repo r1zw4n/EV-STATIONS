@@ -7,3 +7,6 @@ body,
   color-scheme: dark;
   min-height: 100%;
 }
+
+#disqus_thread, #disqus_thread a { color: #f4f4f5; }
+

@@ -62,7 +62,11 @@ export const DisqusComments: React.FC = () => {
       <p className="text-xs text-zinc-400 text-center mb-4">
         Let us know what worked for you and what didn&apos;t below.
       </p>
-      <div id="disqus_thread" className="min-h-[160px]" />
+      <div
+        id="disqus_thread"
+        className="min-h-[160px]"
+        style={{ color: '#f4f4f5', backgroundColor: '#09090b' }}
+      />
     </section>
   );
 };
