@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Header } from './components/Header';
 import { Screen1Stations } from './components/Screen1Stations';
 import { Screen2Availability } from './components/Screen2Availability';
+import { DisqusComments } from './components/DisqusComments';
 import { ScreenId } from './types';
 
 export default function App() {
@@ -74,12 +75,15 @@ export default function App() {
         {/* Main Container - Optimized for mobile view at arm's length */}
         <main className="max-w-xl mx-auto px-4 pt-4 pb-28">
           {activeScreen === 'screen1' ? (
-            <Screen1Stations
-              onNavigateToScreen2={handleNavigateToScreen2}
-              onDataProviderLoaded={setDataProviderTitle}
-              onGpsStateChange={handleGpsStateChange}
-              batteryPct={batteryPct}
-            />
+            <>
+              <Screen1Stations
+                onNavigateToScreen2={handleNavigateToScreen2}
+                onDataProviderLoaded={setDataProviderTitle}
+                onGpsStateChange={handleGpsStateChange}
+                batteryPct={batteryPct}
+              />
+              <DisqusComments />
+            </>
           ) : (
             <Screen2Availability
               initialPostalCode={selectedPostalCode}
