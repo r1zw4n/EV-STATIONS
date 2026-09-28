@@ -153,7 +153,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
         }
 
         setEmptyReason(null);
-        setStations(stationList.slice(0, 3));
+        setStations(stationList.slice(0, 5));
         setFetchState('success');
 
         if (onDataProviderLoaded) {
@@ -477,14 +477,12 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
         </div>
       )}
 
-      {/* Live 3 Station Cards */}
+      {/* Live Station Cards */}
       {fetchState === 'success' && (
         <div className="space-y-4">
-          {(searchRadiusKm === 20 || searchRadiusKm === 35) && (
-            <p className="text-xs text-zinc-400 font-medium px-1">
-              Widened search to {searchRadiusKm} km to find 3 confirmed chargers.
-            </p>
-          )}
+          <p className="text-xs text-zinc-400 font-medium px-1">
+            Showing the five nearest stations. Live slot data comes from LTA where available.
+          </p>
           {stations.map((station, index) => {
             const chargeCalc = calculateChargeTime(station.highestPowerKW, batteryPct);
             const isTopMatch = index === 0;
@@ -500,7 +498,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
               : [station.addressLine, station.addressLine !== station.town ? station.town : null];
 
             const addressText = addressParts.filter(Boolean).join(', ') || 'Singapore';
-            const hasLiveStatus = typeof station.liveTotal === 'number';
+            const hasLiveStatus = typeof station.liveTotal === 'number' && station.liveTotal > 0;
 
             return (
               <article
@@ -519,10 +517,16 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                     <h3 className="text-base font-bold text-white tracking-tight leading-snug">
                       {station.title}
                     </h3>
-                    {hasLiveStatus && (
+                    {hasLiveStatus ? (
                       <div className="mt-1">
                         <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
                           Live: {station.liveAvailable ?? 0} of {station.liveTotal} free
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-800/80 text-zinc-400 border border-zinc-700/60">
+                          Live slot data not available for this site
                         </span>
                       </div>
                     )}
@@ -532,19 +536,21 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
                     </p>
                   </div>
 
-                  <div className="flex flex-col items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      id={`btn-view-slots-${station.id}`}
-                      onClick={() => {
-                        const postal = station.postcode?.trim() || undefined;
-                        onNavigateToScreen2(String(station.id), postal, station.title);
-                      }}
-                      className="min-h-[44px] px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white border border-zinc-700 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap"
-                    >
-                      <span>Check Slots</span>
-                      <ChevronRight className="w-4 h-4 text-emerald-400 shrink-0" />
-                    </button>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    {hasLiveStatus && (
+                      <button
+                        type="button"
+                        id={`btn-view-slots-${station.id}`}
+                        onClick={() => {
+                          const postal = station.postcode?.trim() || undefined;
+                          onNavigateToScreen2(String(station.id), postal, station.title);
+                        }}
+                        className="min-h-[44px] px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white border border-zinc-700 flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 whitespace-nowrap"
+                      >
+                        <span>Check Slots</span>
+                        <ChevronRight className="w-4 h-4 text-emerald-400 shrink-0" />
+                      </button>
+                    )}
                     {isTopMatch && (
                       <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -589,11 +595,6 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
               </article>
             );
           })}
-          {reason === 'fewer-than-3' && (
-            <p className="text-xs text-zinc-400 text-center py-2.5 px-3 bg-zinc-900/50 border border-zinc-800 rounded-xl">
-              Only {stations.length} LTA-registered charger{stations.length === 1 ? '' : 's'} listed on Open Charge Map within 35 km.
-            </p>
-          )}
         </div>
       )}
     </section>
