@@ -583,20 +583,6 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
             </>
           )}
 
-          <button
-            type="button"
-            id="btn-search-another-postal"
-            onClick={() => {
-              setPostalInput('');
-              setNotFoundQuery(null);
-              postalInputRef.current?.focus();
-            }}
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer min-h-[44px]"
-          >
-            <Search className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Search another location</span>
-          </button>
-
           {/* Three nearest LTA sites with live data measured from this postal code */}
           {activePostal && (
             <div className="mt-5 pt-4 border-t border-zinc-800/80 text-left max-w-md mx-auto">
@@ -670,6 +656,22 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
               )}
             </div>
           )}
+
+          <div className="mt-4">
+            <button
+              type="button"
+              id="btn-search-another-postal"
+              onClick={() => {
+                setPostalInput('');
+                setNotFoundQuery(null);
+                postalInputRef.current?.focus();
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer min-h-[44px]"
+            >
+              <Search className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Search another location</span>
+            </button>
+          </div>
         </div>
       )}
 
