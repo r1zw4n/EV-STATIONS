@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Screen1Stations } from './components/Screen1Stations';
 import { Screen2Availability } from './components/Screen2Availability';
@@ -13,7 +13,49 @@ export default function App() {
   const [dataProviderTitle, setDataProviderTitle] = useState<string | null>(null);
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [batteryPct, setBatteryPct] = useState<number>(20);
+
+  // Initialize batteryPct from localStorage so reload remembers the last level (default 20%)
+  const [batteryPct, setBatteryPct] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('ev_battery_pct') ?? localStorage.getItem('batteryPct');
+        if (saved !== null) {
+          const val = parseInt(saved, 10);
+          if (!isNaN(val) && val >= 1 && val <= 99) {
+            return val;
+          }
+        }
+      } catch {
+        // Fallback to default if localStorage is unavailable
+      }
+    }
+    return 20;
+  });
+
+  const handleBatteryChange = useCallback((newPct: number) => {
+    const clamped = Math.min(99, Math.max(1, Math.round(newPct)));
+    setBatteryPct(clamped);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ev_battery_pct', clamped.toString());
+        localStorage.setItem('batteryPct', clamped.toString());
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, []);
+
+  // Keep localStorage in sync whenever batteryPct changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ev_battery_pct', batteryPct.toString());
+        localStorage.setItem('batteryPct', batteryPct.toString());
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [batteryPct]);
 
   const handleGpsStateChange = useCallback(
     (active: boolean, coords?: { lat: number; lng: number } | null) => {
@@ -61,7 +103,7 @@ export default function App() {
           isGpsActive={isGpsActive}
           gpsCoords={gpsCoords}
           batteryPct={batteryPct}
-          onBatteryChange={setBatteryPct}
+          onBatteryChange={handleBatteryChange}
           onSelectScreen={(screen) => {
             if (screen === 'screen2') {
               setArrivedFromScreen1(false);

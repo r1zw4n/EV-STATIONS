@@ -56,7 +56,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
   // energy needed = ([TARGET]% − battery%) of a [60] kWh battery, time = energy ÷ live kW × 60
   const calculateChargeTime = (powerKw: number | null, currentBattery: number) => {
     const targetPct = 100;
-    const clampedBattery = Math.min(Math.max(currentBattery, 5), 95);
+    const clampedBattery = Math.min(Math.max(currentBattery, 1), 99);
     const energyNeededKwh = ((targetPct - clampedBattery) / 100) * 60;
 
     if (!powerKw || powerKw <= 0) {

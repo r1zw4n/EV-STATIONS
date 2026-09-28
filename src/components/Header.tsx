@@ -23,6 +23,58 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const lastFetchedKeyRef = useRef<string | null>(null);
+  const [inputVal, setInputVal] = useState<string>(batteryPct.toString());
+
+  useEffect(() => {
+    setInputVal(batteryPct.toString());
+  }, [batteryPct]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (raw === '') {
+      setInputVal('');
+      return;
+    }
+    const clean = raw.replace(/\D/g, '');
+    if (!clean) {
+      setInputVal('');
+      return;
+    }
+    const num = parseInt(clean, 10);
+    if (num > 99) {
+      setInputVal('99');
+      onBatteryChange(99);
+      return;
+    }
+    setInputVal(clean);
+    if (num >= 1 && num <= 99) {
+      onBatteryChange(num);
+    }
+  };
+
+  const handleInputBlur = () => {
+    if (inputVal === '') {
+      setInputVal(batteryPct.toString());
+      return;
+    }
+    const num = parseInt(inputVal, 10);
+    if (isNaN(num) || num < 1) {
+      setInputVal('1');
+      onBatteryChange(1);
+    } else if (num > 99) {
+      setInputVal('99');
+      onBatteryChange(99);
+    } else {
+      setInputVal(num.toString());
+      onBatteryChange(num);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
 
   useEffect(() => {
     if (!isGpsActive || !gpsCoords) {
@@ -107,27 +159,45 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 id="btn-battery-minus"
-                aria-label="Decrease battery percentage by 5%"
-                disabled={batteryPct <= 5}
-                onClick={() => onBatteryChange(Math.max(5, batteryPct - 5))}
+                aria-label="Decrease battery percentage"
+                disabled={batteryPct <= 1}
+                onClick={() => onBatteryChange(Math.max(1, batteryPct - 5))}
                 className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-100 font-bold text-lg flex items-center justify-center transition-colors cursor-pointer"
               >
                 −
               </button>
 
-              <div className="flex items-center gap-1 px-1.5 min-w-[58px] justify-center text-center">
-                <BatteryCharging className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
-                <span className="text-sm font-black text-amber-300 tabular-nums">
-                  {batteryPct}%
-                </span>
-              </div>
+              <label
+                htmlFor="battery-input"
+                id="battery-percentage-display"
+                className="flex items-center gap-0.5 px-1.5 min-w-[58px] justify-center text-center cursor-pointer hover:bg-zinc-800/80 rounded-lg py-1 transition-colors border border-transparent hover:border-zinc-700/60"
+                title="Tap to type battery percentage (1 to 99)"
+              >
+                <BatteryCharging className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0 mr-0.5" />
+                <span className="sr-only">{batteryPct}%</span>
+                <input
+                  id="battery-input"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={2}
+                  value={inputVal}
+                  onChange={handleInputChange}
+                  onBlur={handleInputBlur}
+                  onKeyDown={handleKeyDown}
+                  onFocus={(e) => e.target.select()}
+                  aria-label="Battery percentage (1 to 99)"
+                  className="w-6 text-sm font-black text-amber-300 tabular-nums bg-transparent text-right outline-none border-b border-dashed border-amber-500/50 focus:border-solid focus:border-amber-400 p-0 m-0 cursor-pointer focus:cursor-text"
+                />
+                <span className="text-sm font-black text-amber-300 select-none">%</span>
+              </label>
 
               <button
                 type="button"
                 id="btn-battery-plus"
-                aria-label="Increase battery percentage by 5%"
-                disabled={batteryPct >= 95}
-                onClick={() => onBatteryChange(Math.min(95, batteryPct + 5))}
+                aria-label="Increase battery percentage"
+                disabled={batteryPct >= 99}
+                onClick={() => onBatteryChange(Math.min(99, batteryPct + 5))}
                 className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-100 font-bold text-lg flex items-center justify-center transition-colors cursor-pointer"
               >
                 +
