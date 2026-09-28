@@ -771,7 +771,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
             <div className="mt-3 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
               <span className="flex items-center gap-1.5 text-emerald-300 font-medium">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                {totalAvailable} available now (Status &quot;1&quot;)
+                {totalAvailable} available now
               </span>
               <span className="flex items-center gap-1.5 text-zinc-400 font-medium">
                 <XCircle className="w-3.5 h-3.5 text-zinc-500" />
