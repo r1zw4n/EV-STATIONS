@@ -37,6 +37,11 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
     arrivedFromScreen1 ? (initialPostalCode || '') : (initialPostalCode || '038983')
   );
   const [userSearched, setUserSearched] = useState<boolean>(false);
+  const [resolvedLocationLabel, setResolvedLocationLabel] = useState<string | null>(
+    arrivedFromScreen1 && stationName ? stationName : null
+  );
+  const [isResolving, setIsResolving] = useState<boolean>(false);
+  const [notFoundQuery, setNotFoundQuery] = useState<string | null>(null);
   const postalInputRef = useRef<HTMLInputElement>(null);
   const [fetchState, setFetchState] = useState<FetchState>(
     arrivedFromScreen1 && !initialPostalCode ? 'empty' : 'loading'
@@ -53,6 +58,8 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
       const trimmed = initialPostalCode ? initialPostalCode.trim() : '';
       setPostalInput(trimmed);
       setActivePostal(trimmed);
+      setResolvedLocationLabel(stationName || null);
+      setNotFoundQuery(null);
       setUserSearched(false);
       if (!trimmed) {
         setFetchState('empty');
@@ -63,8 +70,10 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
     } else if (initialPostalCode && initialPostalCode.trim() !== '') {
       setPostalInput(initialPostalCode.trim());
       setActivePostal(initialPostalCode.trim());
+      setResolvedLocationLabel(stationName || null);
+      setNotFoundQuery(null);
     }
-  }, [initialPostalCode, arrivedFromScreen1]);
+  }, [initialPostalCode, arrivedFromScreen1, stationName]);
 
   const fetchAvailability = useCallback(async (postalToFetch: string) => {
     const cleanPostal = postalToFetch.trim();
@@ -133,16 +142,87 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
   }, []);
 
   useEffect(() => {
-    fetchAvailability(activePostal);
+    if (activePostal) {
+      fetchAvailability(activePostal);
+    }
   }, [activePostal, fetchAvailability]);
+
+  const handleSearchForQuery = useCallback(
+    async (query: string) => {
+      const clean = query.trim();
+      if (!clean) return;
+
+      setUserSearched(true);
+      setNotFoundQuery(null);
+
+      // 1. If 6-digit postal code, query directly (keeps existing postal code behaviour)
+      if (/^\d{6}$/.test(clean)) {
+        setResolvedLocationLabel(null);
+        if (activePostal === clean) {
+          fetchAvailability(clean);
+        } else {
+          setActivePostal(clean);
+        }
+        return;
+      }
+
+      // 2. Otherwise, resolve place name to postal code via /api/geocode before querying LTA
+      setIsResolving(true);
+      setFetchState('loading');
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(clean)}`);
+        if (!res.ok) {
+          // Plain-language suggestion instead of a hard error
+          setNotFoundQuery(clean);
+          setResolvedLocationLabel(null);
+          setFetchState('empty');
+          setGroups([]);
+          setTotalAvailable(0);
+          setTotalConnectors(0);
+          setIsResolving(false);
+          return;
+        }
+
+        const data = await res.json();
+        const resolvedPostal = data.postalCode || (data.postal ? String(data.postal) : null);
+
+        if (!resolvedPostal || !/^\d{6}$/.test(resolvedPostal)) {
+          // Plain-language suggestion if no postal code could be derived
+          setNotFoundQuery(clean);
+          setResolvedLocationLabel(null);
+          setFetchState('empty');
+          setGroups([]);
+          setTotalAvailable(0);
+          setTotalConnectors(0);
+          setIsResolving(false);
+          return;
+        }
+
+        const label = data.label || clean;
+        setResolvedLocationLabel(label);
+        if (activePostal === resolvedPostal) {
+          fetchAvailability(resolvedPostal);
+        } else {
+          setActivePostal(resolvedPostal);
+        }
+      } catch {
+        // Plain-language suggestion instead of a hard error on network failure
+        setNotFoundQuery(clean);
+        setResolvedLocationLabel(null);
+        setFetchState('empty');
+        setGroups([]);
+        setTotalAvailable(0);
+        setTotalConnectors(0);
+      } finally {
+        setIsResolving(false);
+      }
+    },
+    [activePostal, fetchAvailability]
+  );
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = postalInput.trim();
-    if (clean) {
-      setUserSearched(true);
-      setActivePostal(clean);
-    }
+    handleSearchForQuery(postalInput);
   };
 
   const displayedGroups =
@@ -181,7 +261,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
         </p>
       </div>
 
-      {/* Postal Code Search / Quick Selector */}
+      {/* Postal Code or Place Name Search Form */}
       <form
         onSubmit={handleSearchSubmit}
         className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 sm:p-4 mb-4 shadow-sm"
@@ -189,7 +269,7 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="relative flex-1">
             <label htmlFor="postal-code-input" className="sr-only">
-              Singapore 6-digit Postal Code
+              Singapore postal code or place name
             </label>
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
               <Search className="w-4 h-4" />
@@ -198,26 +278,44 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
               ref={postalInputRef}
               id="postal-code-input"
               type="text"
-              pattern="[0-9]{6}"
-              maxLength={6}
               value={postalInput}
-              onChange={(e) => setPostalInput(e.target.value)}
-              placeholder="e.g. 038983"
-              className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-sm font-semibold text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors min-h-[44px]"
+              onChange={(e) => {
+                setPostalInput(e.target.value);
+                if (notFoundQuery) setNotFoundQuery(null);
+              }}
+              placeholder="e.g. Bedok Mall, Bishan MRT, or 038983"
+              disabled={isResolving}
+              className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-sm font-semibold text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors min-h-[44px] disabled:opacity-50"
             />
           </div>
           <button
             type="submit"
             id="search-postal-btn"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-black rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
+            disabled={isResolving}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-bold text-black rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
           >
-            <Search className="w-3.5 h-3.5 text-black" />
-            <span>Check Availability</span>
+            {isResolving ? (
+              <RefreshCw className="w-3.5 h-3.5 text-black animate-spin" />
+            ) : (
+              <Search className="w-3.5 h-3.5 text-black" />
+            )}
+            <span>{isResolving ? 'Resolving...' : 'Check Availability'}</span>
           </button>
         </div>
         <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-2 px-1">
-          <span>Current Location Code: <strong className="text-zinc-200">{activePostal || '—'}</strong></span>
-          <span className="text-zinc-400">Postal search</span>
+          <span>
+            {resolvedLocationLabel ? (
+              <>
+                Location: <strong className="text-zinc-200">{resolvedLocationLabel}</strong>{' '}
+                <span className="text-emerald-400 font-mono">({activePostal})</span>
+              </>
+            ) : (
+              <>
+                Current Location Code: <strong className="text-zinc-200">{activePostal || '—'}</strong>
+              </>
+            )}
+          </span>
+          <span className="text-zinc-400">Postal code or place name</span>
         </div>
       </form>
 
@@ -233,10 +331,12 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
             <Zap className="w-6 h-6 animate-pulse" />
           </div>
           <p className="text-base font-semibold text-zinc-100 leading-relaxed max-w-md mx-auto">
-            Checking Availability Status
+            {isResolving ? 'Resolving Location & Checking Availability' : 'Checking Availability Status'}
           </p>
           <p className="text-xs text-zinc-400 mt-2">
-            Querying LTA DataMall EV charging connector occupancy for postal code {activePostal}...
+            {isResolving
+              ? `Looking up postal code for "${postalInput}" and querying LTA DataMall...`
+              : `Querying LTA DataMall EV charging connector occupancy for postal code ${activePostal}...`}
           </p>
         </div>
       )}
@@ -265,6 +365,39 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
                 </p>
               </>
             )
+          ) : notFoundQuery ? (
+            <>
+              <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
+                Couldn&apos;t find &ldquo;{notFoundQuery}&rdquo;
+              </p>
+              <p className="text-xs text-zinc-400 mt-2 max-w-md mx-auto leading-relaxed">
+                We couldn&apos;t resolve this place name to a Singapore postal code. LTA DataMall organizes EV charging points by 6-digit postal code.
+              </p>
+              <div className="mt-3 p-3 bg-zinc-950/60 border border-zinc-800 rounded-xl text-left max-w-md mx-auto">
+                <p className="text-xs font-semibold text-zinc-300">Suggestion:</p>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                  Try searching for a prominent shopping mall, an MRT station (e.g.{' '}
+                  <strong className="text-emerald-400">Bedok Mall</strong>,{' '}
+                  <strong className="text-emerald-400">Bishan MRT</strong>), or enter a 6-digit postal code directly (e.g.{' '}
+                  <strong className="text-emerald-400">038983</strong>).
+                </p>
+              </div>
+            </>
+          ) : resolvedLocationLabel ? (
+            <>
+              <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
+                No EV-Stations found at {resolvedLocationLabel}
+              </p>
+              <p className="text-xs text-zinc-400 mt-2 max-w-md mx-auto leading-relaxed">
+                We checked postal code <strong className="text-zinc-300">{activePostal}</strong>, but LTA DataMall currently lists no public charging connectors registered at this address.
+              </p>
+              <div className="mt-3 p-3 bg-zinc-950/60 border border-zinc-800 rounded-xl text-left max-w-md mx-auto">
+                <p className="text-xs font-semibold text-zinc-300">Suggestion:</p>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                  LTA&apos;s real-time registry covers registered public and commercial charging stations. Try searching for a major commercial hub or shopping mall below.
+                </p>
+              </div>
+            </>
           ) : (
             <>
               <p className="text-base font-semibold text-zinc-200 leading-relaxed max-w-md mx-auto">
@@ -275,30 +408,61 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
               </p>
             </>
           )}
+
           <button
             type="button"
             id="btn-search-another-postal"
             onClick={() => {
               setPostalInput('');
+              setNotFoundQuery(null);
               postalInputRef.current?.focus();
             }}
             className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition-colors cursor-pointer min-h-[44px]"
           >
             <Search className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Search another postal code</span>
+            <span>Search another location</span>
           </button>
-          <div className="mt-3">
+
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs">
+            <span className="text-zinc-500">Quick suggestions:</span>
             <button
               type="button"
               id="link-try-suntec"
               onClick={() => {
                 setPostalInput('038983');
                 setActivePostal('038983');
+                setResolvedLocationLabel('Suntec City');
+                setNotFoundQuery(null);
                 setUserSearched(true);
+                fetchAvailability('038983');
               }}
-              className="text-xs text-zinc-400 hover:text-emerald-400 underline underline-offset-4 transition-colors cursor-pointer"
+              className="text-xs text-zinc-300 hover:text-emerald-400 bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
             >
               Try Suntec City (038983)
+            </button>
+            <button
+              type="button"
+              id="link-try-bedok-mall"
+              onClick={() => {
+                setPostalInput('Bedok Mall');
+                setNotFoundQuery(null);
+                handleSearchForQuery('Bedok Mall');
+              }}
+              className="text-xs text-zinc-300 hover:text-emerald-400 bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
+            >
+              Bedok Mall
+            </button>
+            <button
+              type="button"
+              id="link-try-bishan-mrt"
+              onClick={() => {
+                setPostalInput('Bishan MRT');
+                setNotFoundQuery(null);
+                handleSearchForQuery('Bishan MRT');
+              }}
+              className="text-xs text-zinc-300 hover:text-emerald-400 bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
+            >
+              Bishan MRT
             </button>
           </div>
         </div>
@@ -360,7 +524,11 @@ export const Screen2Availability: React.FC<Screen2Props> = ({
           {/* Hero Availability Stat Card */}
           <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-emerald-500/40 rounded-2xl p-5 mb-5 shadow-lg shadow-emerald-950/20">
             <div className="text-xs uppercase font-bold tracking-wider text-zinc-400 flex items-center justify-between">
-              <span>Postal Code {activePostal} ({groups.length} site{groups.length !== 1 ? 's' : ''})</span>
+              <span>
+                {resolvedLocationLabel
+                  ? `${resolvedLocationLabel} (Postal ${activePostal}) • ${groups.length} site${groups.length !== 1 ? 's' : ''}`
+                  : `Postal Code ${activePostal} (${groups.length} site${groups.length !== 1 ? 's' : ''})`}
+              </span>
               <span className="text-[11px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/50">
                 LTA Real-Time
               </span>
