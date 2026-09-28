@@ -250,8 +250,8 @@ export default async function handler(req, res) {
       return sendResponse(200, {
         stations: [],
         searchRadiusKm: currentSearchRadiusKm,
-        dataProviderTitle,
-        dataProviderLicense,
+        dataProviderTitle: providerTitle,
+        dataProviderLicense: providerLicense,
       });
     }
 
@@ -271,8 +271,8 @@ export default async function handler(req, res) {
         stations,
         searchRadiusKm: currentSearchRadiusKm,
         ltaFiltered: false,
-        dataProviderTitle,
-        dataProviderLicense,
+        dataProviderTitle: providerTitle,
+        dataProviderLicense: providerLicense,
       });
     }
 
@@ -384,8 +384,8 @@ export default async function handler(req, res) {
       stations,
       searchRadiusKm: currentSearchRadiusKm,
       ltaFiltered: true,
-      dataProviderTitle,
-      dataProviderLicense,
+      dataProviderTitle: providerTitle,
+      dataProviderLicense: providerLicense,
     });
   } catch (err) {
     if (err && err.refused && err.status) {
