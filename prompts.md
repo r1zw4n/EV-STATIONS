@@ -255,7 +255,7 @@ called by hand just now, looks like this:
 
 ## 4. Problem Set 4 — repairs from the four-way table
 
-Three repairs, chosen in severity order from the table in `adversarial_collaboration.md`. Each one started in a fresh Google AI Studio chat with the sceptical prompt below, the agent argued first, I chose, and only then did it build. One commit per repair, verified by me on the live address afterwards. No blind arbiter was needed: the only fourth-row finding was rated 1 by me and 2 by JT, and I did not want to rate any second-row finding 0.
+Four repairs, chosen in severity order from the table in `adversarial_collaboration.md`. Each one started in a fresh Google AI Studio chat with the sceptical prompt below, the agent argued first, I chose, and only then did it build. One commit per repair, verified by me on the live address afterwards. No blind arbiter was needed: the only fourth-row finding was rated 1 by me and 2 by JT, and I did not want to rate any second-row finding 0.
 
 Version my groupmates reviewed, before any repair: https://evstations-gadltzx2c-mbai3.vercel.app
 
@@ -420,8 +420,31 @@ Commit: `Remove raw LTA status code from Screen 2 result card (H1/H2, sev 2, rai
 
 ---
 
+### Repair 4 — battery level control (JT's finding, severity 2; my Finding 1, severity 1)
+
+The only finding raised by both a groupmate and me. Done after Repairs 1 to 3 because it was small.
+
+**Prompt:** the same sceptical prompt, fresh chat, with these lines in the CONTEXT:
+
+````text
+- The finding, in its six lines:
+Where: at the battery − / + control in the header
+What I did, what I saw: I raised the battery to 25% and reloaded. It went back to 20%. The control moves only in 5% steps and you can't type a number, so going from 20% to 80% takes 12 presses.
+Which heuristic: 7, Flexibility and Efficiency of Use.
+Screen or system: Screen. The browser can remember these settings, and the control can accept a typed value.
+Severity, and why: 2, driven by the fact that it requires many clicks
+The repair: A returning visitor finds their last battery level and can get to any battery level in one step.
+- The evidence behind it: raised by one groupmate (JT) and by me in predictions.md (my Finding 1, severity 1, repair: allow the user to input an exact charge %).
+- The repair I propose: the percentage in the header becomes tappable and accepts a typed whole number from 1 to 99; the − / + buttons stay. The value is remembered in the browser so a reload keeps it.
+````
+
+**The agent argued:** nothing. Despite the OUTPUT instruction to argue first and write no code, it built the repair straight away and reported it done. I did not get the five arguments for this one. I kept the change because it matched the repair line, but the check on the live address was the only check it got.
+
+Commit: `Battery level accepts a typed value and survives reload (H7, sev 1 mine / 2 JT, raised by both)` — verified live: tapping 20% and typing 25 changes the charging times; reload keeps 25; typing 80 is one step; 0 and 150 are refused without a crash; − / + still step by 5.
+
+---
+
 ### Not repaired, and why
 
 - WB's plain-language connector labels (severity 2) and WB's active-search-criteria line (severity 2): the set says leave severity 2 unless the repair takes minutes; these need copy decisions I did not have time to make well.
 - JT's letters in the postal code box (severity 2): partly overtaken by Repair 1 — the box now accepts place names on purpose, so letters are no longer an error; the browser pop-up is gone with the old pattern. A plain "no match" message still needs checking.
-- JT's battery control (severity 1 mine, 2 hers): not attempted this set.
