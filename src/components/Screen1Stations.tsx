@@ -9,6 +9,10 @@ import {
   AlertCircle,
   RefreshCw,
   Info,
+  Search,
+  Crosshair,
+  Loader2,
+  X,
 } from 'lucide-react';
 import { LiveStation, LiveStationsApiResponse } from '../types';
 
@@ -38,6 +42,12 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLocationDeniedOrTimedOut, setIsLocationDeniedOrTimedOut] = useState<boolean>(false);
   const [currentCoords, setCurrentCoords] = useState(CITY_HALL_COORDS);
+
+  // Search area states
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [activeAreaLabel, setActiveAreaLabel] = useState<string | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
 
   // Store whether a geolocation attempt is actively resolving
   const locationResolutionRef = useRef<boolean>(false);
@@ -220,14 +230,135 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
     }
   }, [fetchLiveStations, onGpsStateChange]);
 
+  const handleResetGps = useCallback(() => {
+    setActiveAreaLabel(null);
+    setSearchInput('');
+    setGeocodeError(null);
+    requestLocationAndFetch();
+  }, [requestLocationAndFetch]);
+
+  const handleAreaSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = searchInput.trim();
+    if (!clean) return;
+
+    setIsGeocoding(true);
+    setGeocodeError(null);
+
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(clean)}`);
+      const data = await res.json();
+
+      if (!res.ok || data.lat === null || data.lng === null) {
+        setGeocodeError(
+          data.error || `Could not find "${clean}". Try another place name or 6-digit postal code.`
+        );
+        setIsGeocoding(false);
+        return;
+      }
+
+      const newCoords = { lat: data.lat, lng: data.lng };
+      setCurrentCoords(newCoords);
+      setActiveAreaLabel(data.label || clean);
+      setIsLocationDeniedOrTimedOut(false);
+      // Notify parent that GPS is overridden by custom location
+      if (onGpsStateChange) {
+        onGpsStateChange(false, newCoords);
+      }
+      fetchLiveStations(data.lat, data.lng);
+    } catch {
+      setGeocodeError(`Network error resolving "${clean}". Please try again.`);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
   useEffect(() => {
     requestLocationAndFetch();
   }, [requestLocationAndFetch]);
 
   return (
     <section className="w-full pb-10" aria-label="Nearest Charging Stations">
+      {/* Search Area input box */}
+      <div className="mb-4 bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 sm:p-4 shadow-sm">
+        <form onSubmit={handleAreaSearch} className="space-y-2">
+          <label htmlFor="search-area-input" className="block text-xs font-semibold text-zinc-300">
+            Search area (place name or 6-digit postal code)
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                id="search-area-input"
+                type="text"
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  if (geocodeError) setGeocodeError(null);
+                }}
+                placeholder="e.g. Bedok Mall, Tampines, or 529536"
+                disabled={isGeocoding}
+                className="w-full bg-zinc-950 border border-zinc-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-all disabled:opacity-50"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  aria-label="Clear search input"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 p-0.5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              id="btn-search-area"
+              disabled={isGeocoding || !searchInput.trim()}
+              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 min-h-[44px]"
+            >
+              {isGeocoding ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+              <span>{isGeocoding ? 'Finding...' : 'Search'}</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Error message if search failed */}
+        {geocodeError && (
+          <p className="text-xs text-rose-400 mt-2 flex items-center gap-1.5 font-medium">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>{geocodeError}</span>
+          </p>
+        )}
+
+        {/* Active custom area indicator with one-tap Use my GPS reset */}
+        {activeAreaLabel && (
+          <div className="mt-2.5 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-1.5 text-zinc-300 min-w-0">
+              <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">
+                Showing near <strong className="text-white">{activeAreaLabel}</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              id="btn-reset-gps"
+              onClick={handleResetGps}
+              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 hover:text-emerald-300 border border-zinc-700 text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shrink-0 min-h-[32px]"
+            >
+              <Crosshair className="w-3 h-3" />
+              <span>Use my GPS</span>
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Geolocation fallback banner if denied or timed out */}
-      {isLocationDeniedOrTimedOut && (
+      {isLocationDeniedOrTimedOut && !activeAreaLabel && (
         <div
           id="location-fallback-banner"
           className="mb-4 bg-zinc-900/90 border border-amber-500/40 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-sm"

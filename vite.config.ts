@@ -51,6 +51,18 @@ export default defineConfig(() => {
                 return;
               }
             }
+            if (req.url?.startsWith('/api/geocode')) {
+              try {
+                const { default: handler } = await import('./api/geocode.js');
+                await handler(req, res);
+                return;
+              } catch (err) {
+                console.error('Dev middleware error on /api/geocode:', err);
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'Internal error handling /api/geocode' }));
+                return;
+              }
+            }
             if (req.url?.startsWith('/api/health')) {
               try {
                 const { default: handler } = await import('./api/health.js');
