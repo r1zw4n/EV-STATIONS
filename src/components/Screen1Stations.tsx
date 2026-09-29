@@ -283,7 +283,7 @@ export const Screen1Stations: React.FC<Screen1Props> = ({
       <div className="mb-4 bg-zinc-900/90 border border-zinc-800 rounded-2xl p-3 sm:p-4 shadow-sm">
         <form onSubmit={handleAreaSearch} className="space-y-2">
           <label htmlFor="search-area-input" className="block text-xs font-semibold text-zinc-300">
-            Search area (place name or 6-digit postal code)
+            ENTER DESTINATION
           </label>
           <div className="flex gap-2">
             <div className="relative flex-1">
